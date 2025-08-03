@@ -1,8 +1,59 @@
-from fastapi import FastAPI
+import os
+import requests
+from dotenv import load_dotenv
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 
-api = FastAPI()
+# Load environment variables from .env file
+load_dotenv()
+api_key = os.getenv("API_KEY")
 
-# defining methods for the API - GET, POST, PUT, DELETE
-@api.get("/")
-def index():
-    return {"message": "Welcome to Murf AI's 30 Days of Voice Agents Challenge!"}
+# Initialize FastAPI app
+app = FastAPI()
+
+# Mount static files directory
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Initialize Jinja2 templates
+templates = Jinja2Templates(directory="templates")
+
+# Define a Pydantic model for request body
+class TTSRequest(BaseModel):
+    text: str = "The quick brown fox jumps over the lazy dog"
+    voice_id: str = "en-US-natalie"  # Default voice ID, can be changed as needed
+
+
+# Define routes
+@app.get("/", response_class=HTMLResponse)
+async def read_root(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
+    
+@app.post("/generate-audio", response_class=JSONResponse)
+async def generate_audio(request: TTSRequest):
+    try:
+        url = "https://api.murf.ai/v1/speech/generate"
+        payload = {
+            "text": request.text,
+            "voice_id": request.voice_id
+        }
+
+        header= {
+            "content-type": "application/json",
+            "api-key": api_key
+        }   
+
+        response = requests.post(url, json=payload, headers=header)
+        #print("Murf API Response: ", response.status_code, response.json())
+        
+        if response.status_code == 200:
+            audio_url = response.json().get("audioFile")
+            if audio_url:
+                return {"audio_url": audio_url}
+            else:
+                raise HTTPException(status_code=500, detail="Audio URL not found in response.")
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

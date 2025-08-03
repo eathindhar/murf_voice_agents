@@ -1,0 +1,9 @@
+import json
+
+
+json_data = """{'audioFile': 'https://murf.ai/user-upload/one-day-temp/4e74495d-8b17-4d50-9cf2-2bccd1a1406f.wav?response-cache-control=max-age%3D604801&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20250803T000000Z&X-Amz-SignedHeaders=host&X-Amz-Expires=259200&X-Amz-Credential=AKIA27M5532DYKBCJICE%2F20250803%2Fus-east-2%2Fs3%2Faws4_request&X-Amz-Signature=8f0aaf9b542646026cd2313ebec639024b1d0f8b57c6622ff63a8ed499118240', 'encodedAudio': None, 'audioLengthInSeconds': 2.858503, 'wordDurations': [{'word': 'The', 'startMs': 0, 'endMs': 325, 'sourceWordIndex': -1, 'pitchScaleMinimum': 0.0, 'pitchScaleMaximum': 0.0}, {'word': 'quick', 'startMs': 325, 'endMs': 673, 'sourceWordIndex': -1, 'pitchScaleMinimum': 0.0, 'pitchScaleMaximum': 0.0}, {'word': 'brown', 'startMs': 673, 'endMs': 928, 'sourceWordIndex': -1, 'pitchScaleMinimum': 0.0, 'pitchScaleMaximum': 0.0}, {'word': 'fox', 'startMs': 928, 'endMs': 1265, 'sourceWordIndex': -1, 'pitchScaleMinimum': 0.0, 'pitchScaleMaximum': 0.0}, {'word': 'jumps', 'startMs': 1265, 'endMs': 1764, 'sourceWordIndex': -1, 'pitchScaleMinimum': 0.0, 'pitchScaleMaximum': 0.0}, {'word': 'over', 'startMs': 1764, 'endMs': 2054, 'sourceWordIndex': -1, 'pitchScaleMinimum': 0.0, 'pitchScaleMaximum': 0.0}, {'word': 'the', 'startMs': 2054, 'endMs': 2182, 'sourceWordIndex': -1, 'pitchScaleMinimum': 0.0, 'pitchScaleMaximum': 0.0}, {'word': 'lazy', 'startMs': 2182, 'endMs': 2472, 'sourceWordIndex': -1, 'pitchScaleMinimum': 0.0, 'pitchScaleMaximum': 0.0}, {'word': 'dog', 'startMs': 2472, 'endMs': 2522, 'sourceWordIndex': -1, 'pitchScaleMinimum': 0.0, 'pitchScaleMaximum': 0.0}], 'warning': "No style was provided. Using the default style: 'Promo' for the selected voice.", 'consumedCharacterCount': 0, 'remainingCharacterCount': 99307}"""
+
+print(json_data)
+
+
+json_val = json.load(json_data)
