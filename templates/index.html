@@ -2,16 +2,35 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>MurfAI Voice Agents</title>
+  <title>MurfAI Voice Agent</title>
+  <link rel="icon" type="image/x-icon" href="/static/favicon.ico" />
   <link rel="stylesheet" href="/static/style.css" />
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
-  <div class="card">
-    <img src="/static/logo.png" alt="MurfAI Logo" class="logo" />
-    <h1>MurfAI's 30 Days of Voice Agents!</h1>
-    <button id="cta-btn">Get Started</button>
+  <div class="container">
+    <h1 class="title">MurfAI's Text to Speech Generator</h1>
+    <p class="subtitle">Select a voice, enter your text, and generate human-like speech</p>
+
+    <div class="card">
+      <div class="voice-options">
+        <button class="voice-btn selected" data-voice="en-US-natalie">Natalie</button>
+        <button class="voice-btn" data-voice="en-IN-aarav">Aarav</button>
+        <button class="voice-btn" data-voice="en-SCOTT-rory">Rory</button>
+        <button class="voice-btn" data-voice="en-UK-theo">Theo</button>
+      </div>
+
+      <textarea id="text-input" placeholder="Type here to start generating audio" class="styled-input" rows="6"></textarea>
+
+      <button id="cta-btn" class="styled-button">
+        <span id="btn-text">Generate Audio</span>
+        <span id="loader" class="loader" style="display: none;"></span>
+      </button>
+
+      <audio id="audio-player" controls class="audio-player" style="display: none;"></audio>
+    </div>
   </div>
+
   <script src="/static/script.js"></script>
 </body>
 </html>
