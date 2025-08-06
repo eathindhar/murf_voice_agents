@@ -12,10 +12,20 @@ body {
 }
 
 .container {
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+  gap: 20px;
   width: 100%;
   max-width: 800px;
   padding: 20px;
   box-sizing: border-box;
+  align-items: flex-start;
+}
+
+.tts,
+.echo-bot{
+  flex: 1;
 }
 
 .title {
@@ -43,7 +53,9 @@ body {
   flex-direction: column;
   gap: 20px;
   width: 100%;
+  height: 100%;
   box-sizing: border-box;
+  justify-content: space-between;
 }
 
 
@@ -113,6 +125,31 @@ body {
 }
 
 .styled-button:hover {
+  background-color: #cccccc;
+  color: #000000;
+}
+
+.recording-controls{
+  display: flex;
+  justify-content: space-evenly;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.audio-button{
+  background-color: #7F00FF;
+  color: #FFFFFF;
+  border: none;
+  padding: 15px 25px;
+  font-size: 16px;
+  font-weight: 600;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+  gap: 10px;
+}
+
+.audio-button:hover {
   background-color: #cccccc;
   color: #000000;
 }
