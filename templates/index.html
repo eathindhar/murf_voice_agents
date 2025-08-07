@@ -49,13 +49,17 @@
         </div>
       </div>
       <div class="echo-bot">
-        <h1 class="title">Echo Bot</h1>
-        <p class="subtitle">Record your voice and listen to the playback</p>
+        <h1 class="title">Echo Bot with Transcription</h1>
+        <p class="subtitle">
+          Record your voice, listen to playback, and see the transcription
+        </p>
 
         <div class="card">
           <div class="recording-controls">
             <button id="recordButton" class="audio-button">🎙️Record</button>
-            <button id="stopButton" class="audio-button" disabled>🔴Stop</button>
+            <button id="stopButton" class="audio-button" disabled>
+              🔴Stop
+            </button>
           </div>
           <p id="message"></p>
           <audio
@@ -65,6 +69,18 @@
             style="display: none"
           ></audio>
           <p id="status-message"></p>
+          <div id="transcription-section" style="margin-top: 20px">
+            <h3 style="color: #aaaaaa; font-size: 16px; margin-bottom: 10px">
+              Transcription:
+            </h3>
+            <div
+              id="transcription-display"
+              class="transcription-box"
+              style="display: none"
+            >
+              <!-- Transcription will appear here -->
+            </div>
+          </div>
         </div>
       </div>
     </div>
