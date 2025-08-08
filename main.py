@@ -120,3 +120,70 @@ async def transcribe_audio(audio_file: UploadFile = File(...)):
     except Exception as e:
         print(f"Error during transcription: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Transcription error: {str(e)}")
+
+
+@app.post("/tts/echo", response_class=JSONResponse)
+async def tts_echo(audio_file: UploadFile = File(...)):
+    """
+    New endpoint that:
+    1. Receives audio file
+    2. Transcribes it using AssemblyAI
+    3. Sends transcription to Murf API for TTS
+    4. Returns the generated audio URL
+    """
+    try:
+        print(f"Received audio file for TTS echo: {audio_file.filename}")
+        
+        # Step 1: Transcribe the audio
+        transcriber = aai.Transcriber()
+        await audio_file.seek(0)
+        
+        print("Transcribing audio...")
+        transcript = transcriber.transcribe(audio_file.file)
+        
+        # Check if transcription was successful
+        if transcript.status == aai.TranscriptStatus.error:
+            raise HTTPException(status_code=500, detail=f"Transcription failed: {transcript.error}")
+        
+        transcribed_text = transcript.text
+        print(f"Transcription successful: {transcribed_text}")
+        
+        # Check if transcription is empty
+        if not transcribed_text or transcribed_text.strip() == "":
+            raise HTTPException(status_code=400, detail="No speech detected in the audio file")
+        
+        # Step 2: Send transcription to Murf API for TTS
+        print("Generating audio with Murf...")
+        murf_url = "https://api.murf.ai/v1/speech/generate"
+        murf_payload = {
+            "text": transcribed_text,
+            "voice_id": "en-US-natalie"  # Using Natalie as default voice
+        }
+        
+        murf_headers = {
+            "content-type": "application/json",
+            "api-key": api_key
+        }
+        
+        murf_response = requests.post(murf_url, json=murf_payload, headers=murf_headers)
+        
+        if murf_response.status_code == 200:
+            audio_url = murf_response.json().get("audioFile")
+            if audio_url:
+                return {
+                    "audio_url": audio_url,
+                    "transcription": transcribed_text,
+                    "status": "success"
+                }
+            else:
+                raise HTTPException(status_code=500, detail="Audio URL not found in Murf response")
+        else:
+            print(f"Murf API error: {murf_response.status_code}, {murf_response.text}")
+            raise HTTPException(status_code=500, detail=f"Murf API error: {murf_response.status_code}")
+            
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except Exception as e:
+        print(f"Error in TTS echo: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"TTS echo error: {str(e)}")

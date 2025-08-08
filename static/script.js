@@ -10,7 +10,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // New elements for recording functionality
   const startButton = document.getElementById("recordButton");
   const stopButton = document.getElementById("stopButton");
-  const audioPlayback = document.getElementById("audio-player1"); // Assuming a separate player for recorded audio
+  const audioPlayback = document.getElementById("audio-player1"); // Echo bot audio player
   const message = document.getElementById("message");
 
   let mediaRecorder;
@@ -108,17 +108,11 @@ document.addEventListener("DOMContentLoaded", () => {
         };
 
         mediaRecorder.onstop = () => {
-          message.textContent = "Recording stopped. Preparing audio...";
+          message.textContent = "Recording stopped. Processing...";
           const audioBlob = new Blob(audioChunks, { type: "audio/mp3" });
-          const audioUrl = URL.createObjectURL(audioBlob);
           
-          audioPlayback.src = audioUrl;
-          audioPlayback.controls = true;
-          audioPlayback.style.display = "block";
-          audioPlayback.play();
-          message.textContent = "Playback ready.";
-
-          uploadAndTranscribeAudio(audioBlob);
+          // Instead of playing the recorded audio, process it through TTS Echo
+          processAudioWithTTSEcho(audioBlob);
 
           // Clean up the stream
           stream.getTracks().forEach((track) => track.stop());
@@ -148,33 +142,35 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 });
 
-// A new function to upload and transcribe the audio
-async function uploadAndTranscribeAudio(audioBlob) {
+// Updated function to process audio through TTS Echo
+async function processAudioWithTTSEcho(audioBlob) {
   const formData = new FormData();
-
   const filename = `recorded_audio.mp3`;
   const statusMessage = document.getElementById("status-message");
   const transcriptionDisplay = document.getElementById("transcription-display");
+  const audioPlayback = document.getElementById("audio-player1");
   
   formData.append("audio_file", audioBlob, filename);
-  console.log("Transcribing audio file...");
+  console.log("Processing audio with TTS Echo...");
   
   try {
-    statusMessage.textContent = "Transcribing audio...";
+    statusMessage.textContent = "Transcribing and generating voice...";
     
-    const response = await fetch("/transcribe/file", {
+    // Call the new TTS Echo endpoint
+    const response = await fetch("/tts/echo", {
       method: "POST",
       body: formData,
     });
 
     if (!response.ok) {
-      throw new Error("Failed to transcribe audio.");
+      const errorData = await response.json();
+      throw new Error(errorData.detail || "Failed to process audio");
     }
     
     const result = await response.json();
-    console.log("Transcription successful:", result);
+    console.log("TTS Echo successful:", result);
     
-    statusMessage.textContent = "Transcription complete ✅";
+    statusMessage.textContent = "Voice generation complete ✅";
     
     // Display the transcription
     if (transcriptionDisplay) {
@@ -182,48 +178,66 @@ async function uploadAndTranscribeAudio(audioBlob) {
       transcriptionDisplay.style.display = "block";
     }
     
+    // Play the generated Murf audio instead of the original recording
+    if (result.audio_url && audioPlayback) {
+      audioPlayback.src = result.audio_url;
+      audioPlayback.controls = true;
+      audioPlayback.style.display = "block";
+      audioPlayback.play();
+      statusMessage.textContent += " - Playing Murf voice";
+    } else {
+      throw new Error("No audio URL received from server");
+    }
+    
   } catch (error) {
-    console.error("Error transcribing audio:", error);
-    statusMessage.textContent = "❌ Transcription failed: " + error.message;
+    console.error("Error in TTS Echo:", error);
+    statusMessage.textContent = "❌ Processing failed: " + error.message;
     if (transcriptionDisplay) {
-      transcriptionDisplay.textContent = "Transcription failed. Please try again.";
+      transcriptionDisplay.textContent = "Processing failed. Please try again.";
       transcriptionDisplay.style.display = "block";
     }
   }
 }
 
-// legacy function to upload audio
-// async function uploadAudio(audioBlob) {
+// Legacy function (keeping for reference but not used)
+// async function uploadAndTranscribeAudio(audioBlob) {
 //   const formData = new FormData();
-
-//   const now = new Date();
-//   const year = now.getFullYear();
-//   const month = String(now.getMonth() + 1).padStart(2, '0');
-//   const day = String(now.getDate()).padStart(2, '0');
-//   const hours = String(now.getHours()).padStart(2, '0');
-//   const minutes = String(now.getMinutes()).padStart(2, '0');
-//   const seconds = String(now.getSeconds()).padStart(2, '0');
-//   timestamp = ` audio_${year}${month}${day}_${hours}${minutes}${seconds}.mp4`;
-//   console.log("Timestamp for audio file:", timestamp);
+//   const filename = `recorded_audio.mp3`;
 //   const statusMessage = document.getElementById("status-message");
-//   formData.append("audio_file", audioBlob, timestamp); // "audio_file" is the field name the server expects
-//   console.log("Uploading audio file...");
+//   const transcriptionDisplay = document.getElementById("transcription-display");
+  
+//   formData.append("audio_file", audioBlob, filename);
+//   console.log("Transcribing audio file...");
+  
 //   try {
-//     // You'll need to create this /upload-audio endpoint in your FastAPI code
-//     const response = await fetch("/upload-audio", {
+//     statusMessage.textContent = "Transcribing audio...";
+    
+//     const response = await fetch("/transcribe/file", {
 //       method: "POST",
 //       body: formData,
 //     });
 
 //     if (!response.ok) {
-//       throw new Error("Failed to upload audio.");
+//       throw new Error("Failed to transcribe audio.");
 //     }
+    
 //     const result = await response.json();
-//     console.log("Upload successful:", result);
-//     statusMessage.textContent = "Uploaded ✅ File name: " + result.file_name;
-//     // You can now display the file info (name, size, etc.) to the user
+//     console.log("Transcription successful:", result);
+    
+//     statusMessage.textContent = "Transcription complete ✅";
+    
+//     // Display the transcription
+//     if (transcriptionDisplay) {
+//       transcriptionDisplay.textContent = result.transcription || "No speech detected";
+//       transcriptionDisplay.style.display = "block";
+//     }
+    
 //   } catch (error) {
-//     console.error("Error uploading audio:", error);
-//     // Handle the error gracefully, e.g., show a message to the user
+//     console.error("Error transcribing audio:", error);
+//     statusMessage.textContent = "❌ Transcription failed: " + error.message;
+//     if (transcriptionDisplay) {
+//       transcriptionDisplay.textContent = "Transcription failed. Please try again.";
+//       transcriptionDisplay.style.display = "block";
+//     }
 //   }
 // }
