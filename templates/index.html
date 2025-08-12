@@ -12,7 +12,7 @@
   </head>
   <body>
     <div class="container">
-      <div class="tts">
+      <div class="tts" style="display: none">
         <h1 class="title">MurfAI's Text to Speech Generator</h1>
         <p class="subtitle">
           Select a voice, enter your text, and generate human-like speech
@@ -48,38 +48,59 @@
           ></audio>
         </div>
       </div>
+      
       <div class="echo-bot">
-        <h1 class="title">Gemini Wrapper</h1>
+        <h1 class="title">AI Voice Assistant</h1>
         <p class="subtitle">
-          Hey there! Ask me anything, and I'll do my best to help you out.
+          🎤 Ask me anything! I'll listen, understand, and respond with a natural voice.
         </p>
+        
         <div class="card">
+          <!-- Session Management Section -->
+          <div class="session-controls" style="margin-bottom: 20px; padding: 15px; background-color: #2a2a2e; border-radius: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+              <div id="session-display" style="color: #aaaaaa; font-size: 12px; font-family: monospace;">
+                Session: Loading...
+              </div>
+              <button id="newSessionButton" class="session-button" style="padding: 8px 15px; background-color: #00FF7F; color: #000; border: none; border-radius: 5px; font-size: 12px; font-weight: 600; cursor: pointer;">
+                🔄 New Session
+              </button>
+            </div>
+          </div>
+          
           <div class="recording-controls">
             <button id="recordButton" class="audio-button">🎙️Record</button>
             <button id="stopButton" class="audio-button" disabled>
               🔴Stop
             </button>
           </div>
-          <p id="message"></p>
+          
+          <p id="message" style="color: #aaaaaa; font-size: 14px; margin: 10px 0; min-height: 20px;">
+            Ready to start a conversation! Click Record to begin.
+          </p>
+          
+          <div id="status-message" style="color: #7F00FF; font-weight: 600; margin: 10px 0; min-height: 20px;"></div>
+          
           <audio
             id="audio-player1"
             controls
             class="audio-player"
             style="display: none"
           ></audio>
-          <p id="status-message"></p>
-          <div id="transcription-section" style="margin-top: 20px">
-            <h3 style="color: #aaaaaa; font-size: 16px; margin-bottom: 10px">
-              What you said:
-            </h3>
+          
+          <div id="conversation-section" style="margin-top: 20px;">
             <div
               id="transcription-display"
-              class="transcription-box"
-              style="display: none; background-color: #2a2a2e; padding: 15px; border-radius: 10px; margin-top: 10px; color: #ffffff; font-size: 14px; line-height: 1.4;"
+              class="conversation-box"
+              style="display: none; background-color: #2a2a2e; padding: 20px; border-radius: 12px; margin-top: 10px; color: #ffffff; font-size: 14px; line-height: 1.6; border: 1px solid #444; max-height: 400px; overflow-y: auto;"
             >
-              <!-- Transcription will appear here -->
+              <!-- Conversation history will appear here -->
             </div>
           </div>
+          
+          <!-- Additional conversation elements for future enhancements -->
+          <div id="user-message" style="display: none;"></div>
+          <div id="ai-response" style="display: none;"></div>
         </div>
       </div>
     </div>

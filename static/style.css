@@ -47,7 +47,6 @@ body {
   background-color: #1a1a1d;
   padding: 40px;
   border-radius: 20px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.4);
   text-align: center;
   display: flex;
   flex-direction: column;
@@ -58,6 +57,29 @@ body {
   justify-content: space-between;
 }
 
+.session-controls {
+  background-color: #2a2a2e;
+  padding: 15px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+}
+
+.session-button {
+  padding: 8px 15px;
+  background-color: #00FF7F;
+  color: #000;
+  border: none;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.session-button:hover {
+  background-color: #00CC64;
+  transform: translateY(-1px);
+}
 
 .voice-options {
   display: flex;
@@ -145,13 +167,27 @@ body {
   font-weight: 600;
   border-radius: 12px;
   cursor: pointer;
-  transition: background-color 0.3s ease;
+  transition: all 0.3s ease;
   gap: 10px;
 }
 
 .audio-button:hover {
   background-color: #cccccc;
   color: #000000;
+  transform: translateY(-2px);
+}
+
+.audio-button:disabled {
+  background-color: #444;
+  color: #777;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.audio-button:disabled:hover {
+  background-color: #444;
+  color: #777;
+  transform: none;
 }
 
 .loader {
@@ -172,4 +208,74 @@ body {
   width: 100%;
   border-radius: 10px;
   display: block;
+}
+
+.conversation-box {
+  max-height: 400px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #7F00FF #2a2a2e;
+}
+
+.conversation-box::-webkit-scrollbar {
+  width: 6px;
+}
+
+.conversation-box::-webkit-scrollbar-track {
+  background: #2a2a2e;
+  border-radius: 3px;
+}
+
+.conversation-box::-webkit-scrollbar-thumb {
+  background: #7F00FF;
+  border-radius: 3px;
+}
+
+.conversation-box::-webkit-scrollbar-thumb:hover {
+  background: #9F20FF;
+}
+
+/* Responsive design for mobile */
+@media (max-width: 768px) {
+  .container {
+    flex-direction: column;
+    gap: 15px;
+    padding: 15px;
+  }
+  
+  .title {
+    font-size: 24px;
+  }
+  
+  .subtitle {
+    font-size: 14px;
+  }
+  
+  .card {
+    padding: 20px;
+  }
+  
+  .recording-controls {
+    flex-direction: column;
+    gap: 15px;
+  }
+  
+  .audio-button {
+    width: 100%;
+    padding: 18px;
+  }
+  
+  .session-controls {
+    padding: 10px;
+  }
+  
+  .session-controls > div {
+    flex-direction: column;
+    gap: 10px;
+    text-align: center;
+  }
+  
+  #session-display {
+    font-size: 10px;
+  }
 }
