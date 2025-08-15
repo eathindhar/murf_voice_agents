@@ -3,7 +3,6 @@ document.addEventListener("DOMContentLoaded", () => {
   // DOM Elements
   const recordButton = document.getElementById("recordButton");
   const cancelButton = document.getElementById("cancelButton");
-  const recordText = document.getElementById("record-text");
   const statusMessage = document.getElementById("status-message");
   const audioPlayer = document.getElementById("audio-player");
   const welcomeScreen = document.getElementById("welcome-screen");
@@ -12,11 +11,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const connectionDot = document.getElementById("connection-dot");
   const connectionStatus = document.getElementById("connection-status");
   
-  // Icons
-  const micIcon = document.getElementById("mic-icon");
-  const stopIcon = document.getElementById("stop-icon");
-  const loadingIcon = document.getElementById("loading-icon");
-
   // Session management
   let currentSessionId = getOrCreateSessionId();
   let isRecording = false;
@@ -47,26 +41,6 @@ document.addEventListener("DOMContentLoaded", () => {
     // New session button
     newSessionButton.addEventListener("click", startNewSession);
     
-    // Toast dismiss buttons
-    const dismissError = document.getElementById("dismiss-error");
-    const dismissSuccess = document.getElementById("dismiss-success");
-    
-    if (dismissError) {
-      dismissError.addEventListener("click", () => hideToast("error"));
-    }
-    
-    if (dismissSuccess) {
-      dismissSuccess.addEventListener("click", () => hideToast("success"));
-    }
-
-    // Auto-dismiss toasts
-    document.addEventListener("click", (e) => {
-      if (!e.target.closest(".toast")) {
-        hideToast("error");
-        hideToast("success");
-      }
-    });
-
     // Audio playback events
     audioPlayer.addEventListener("play", () => {
       isPlayingAudio = true;
@@ -285,7 +259,6 @@ document.addEventListener("DOMContentLoaded", () => {
       const formData = new FormData();
       const filename = `recording_${Date.now()}.webm`;
       formData.append("audio_file", audioBlob, filename);
-      
       updateStatusMessage("Understanding your message... Click cancel to stop", "processing");
       
       // Create AbortController for cancellation
@@ -297,30 +270,24 @@ document.addEventListener("DOMContentLoaded", () => {
         body: formData,
         signal: controller.signal
       });
-
+      
       // Clear the current request
       currentRequest = null;
-
-      const result = await response.json();
       
-      if (response.ok) {
-        // Full success
+      const result = await response.json();
+
+      if (response.ok) { // Status 200
         handleSuccessfulResponse(result);
-      } else if (response.status === 206) {
-        // Partial success (text but no audio)
+      } else if (response.status === 206) { // Partial success (text but no audio)
         handlePartialResponse(result);
-      } else {
-        // Error response
+      } else { // Error response
         handleErrorResponse(result);
       }
-      
     } catch (error) {
       if (error.name === 'AbortError') {
-        // Request was cancelled
         console.log("Request cancelled by user");
         return;
       }
-      
       console.error("Error processing recording:", error);
       showError("Failed to process your message. Please try again.");
       resetToIdle();
@@ -329,14 +296,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function handleSuccessfulResponse(result) {
     console.log("Successful response:", result);
-    
     // Add messages to chat
     addUserMessage(result.user_message);
     addAssistantMessage(result.ai_response);
     
     // Update status and play audio
     updateStatusMessage("Playing response... Click cancel to stop", "success");
-    
     if (result.audio_url) {
       audioPlayer.src = result.audio_url;
       audioPlayer.play().then(() => {
@@ -356,7 +321,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function handlePartialResponse(result) {
     console.log("Partial response:", result);
-    
     // Add messages to chat
     addUserMessage(result.user_message);
     addAssistantMessage(result.ai_response);
@@ -376,15 +340,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function handleErrorResponse(result) {
     console.error("Error response:", result);
-    
     const errorMessage = result.fallback_message || result.error || "Something went wrong. Please try again.";
     showError(errorMessage);
-    
     if (result.audio_url) {
       audioPlayer.src = result.audio_url;
       audioPlayer.play().catch(e => console.log("Error audio failed:", e));
     }
-    
     resetToIdle();
   }
 
@@ -408,7 +369,7 @@ document.addEventListener("DOMContentLoaded", () => {
     messageDiv.innerHTML = `
       <div class="message-avatar">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M12 2L13.09 8.26L20 9L13.09 9.74L12 16L10.91 9.74L4 9L10.91 8.26L12 2Z"/>
+          <path d="M12 2L13.09 8.26L20 9L13.09 9.74L12 16L10.91 9.74L4 9L10.91 8.26L12 2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
         </svg>
       </div>
       <div class="message-content">
@@ -421,44 +382,53 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function showChatInterface() {
-    if (welcomeScreen.style.display !== "none") {
-      welcomeScreen.style.display = "none";
-      chatMessages.style.display = "flex";
-    }
+    welcomeScreen.style.display = "none";
+    chatMessages.style.display = "flex";
   }
 
+  function startNewSession() {
+    currentSessionId = getOrCreateSessionId(true);
+    chatMessages.innerHTML = "";
+    welcomeScreen.style.display = "flex";
+    chatMessages.style.display = "none";
+    conversationCount = 0;
+    updateStatusMessage("Start a conversation by clicking the record button");
+    resetToIdle();
+    showSuccess("New chat session started!");
+  }
+
+  function getOrCreateSessionId(forceNew = false) {
+    let sessionId = localStorage.getItem("voiceChatSessionId");
+    if (!sessionId || forceNew) {
+      sessionId = `session_${Date.now()}`;
+      localStorage.setItem("voiceChatSessionId", sessionId);
+    }
+    return sessionId;
+  }
+
+  // UI State Management
   function setButtonState(state) {
-    recordButton.setAttribute("data-state", state);
+    recordButton.dataset.state = state;
+    const isIdle = state === "idle";
+    const isRecording = state === "recording";
+    const isProcessing = state === "processing" || state === "requesting";
     
-    // Hide all icons first
-    micIcon.style.display = "none";
-    stopIcon.style.display = "none";
-    loadingIcon.style.display = "none";
+    recordButton.disabled = !isIdle && !isRecording;
     
-    // Enable/disable button based on state
-    recordButton.disabled = (state === "requesting" || state === "processing");
+    // Manage icons
+    const micIcon = document.querySelector("#mic-icon");
+    const stopIcon = document.querySelector("#stop-icon");
+    const loadingIcon = document.querySelector("#loading-icon");
+
+    micIcon.style.display = isIdle ? 'block' : 'none';
+    stopIcon.style.display = isRecording ? 'block' : 'none';
+    loadingIcon.style.display = isProcessing ? 'block' : 'none';
     
-    switch (state) {
-      case "idle":
-        micIcon.style.display = "block";
-        recordText.textContent = conversationCount > 0 ? "Click to speak" : "Click to start";
-        break;
-      case "requesting":
-        loadingIcon.style.display = "block";
-        recordText.textContent = "Requesting access...";
-        break;
-      case "recording":
-        stopIcon.style.display = "block";
-        recordText.textContent = "Click to stop";
-        break;
-      case "processing":
-        loadingIcon.style.display = "block";
-        recordText.textContent = "Processing...";
-        break;
-    }
+    // Manage text
+    document.getElementById("record-text").textContent = isRecording ? "Stop" : "Record";
   }
 
-  function updateStatusMessage(message, type = "") {
+  function updateStatusMessage(message, type = "idle") {
     statusMessage.textContent = message;
     statusMessage.className = `status-message ${type}`;
   }
@@ -467,181 +437,88 @@ document.addEventListener("DOMContentLoaded", () => {
     isRecording = false;
     isProcessing = false;
     isPlayingAudio = false;
-    currentRequest = null;
-    
     hideCancelButton();
     setButtonState("idle");
-    updateStatusMessage(conversationCount > 0 ? "Ready for your next message" : "Click the button to start talking");
+    updateStatusMessage("Click to record your message");
+  }
+
+  // Connection Health Check
+  async function performHealthCheck() {
+    try {
+      const response = await fetch("/health");
+      const data = await response.json();
+      updateConnectionStatus(data.status);
+    } catch (error) {
+      console.error("Health check failed:", error);
+      updateConnectionStatus("unhealthy");
+    }
+    setTimeout(performHealthCheck, 30000); // Check every 30 seconds
+  }
+
+  function updateConnectionStatus(status = "healthy") {
+    if (status === "healthy") {
+      connectionDot.className = "status-dot online";
+      connectionStatus.textContent = "Connected";
+    } else {
+      connectionDot.className = "status-dot offline";
+      connectionStatus.textContent = "Disconnected";
+    }
+  }
+
+  // Toast Notifications
+  function showToast(message, type = "success") {
+    const toastId = type === "success" ? "success-toast" : "error-toast";
+    const messageId = type === "success" ? "success-message" : "error-message";
+    const toast = document.getElementById(toastId);
+    const msgElement = document.getElementById(messageId);
+    
+    msgElement.textContent = message;
+    toast.style.display = "flex";
+    toast.classList.remove("hidden");
+    
+    setTimeout(() => {
+      hideToast(type);
+    }, 5000);
   }
 
   function showError(message, type = "error") {
-    const toast = document.getElementById(`${type}-toast`);
-    const messageElement = document.getElementById(`${type}-message`);
-    
-    if (toast && messageElement) {
-      messageElement.textContent = message;
-      toast.style.display = "flex";
-      
-      // Auto-hide after 5 seconds
-      setTimeout(() => {
-        hideToast(type);
-      }, 5000);
-    }
+    showToast(message, type);
   }
-
+  
   function showSuccess(message) {
-    showError(message, "success");
+    showToast(message, "success");
   }
 
   function hideToast(type) {
-    const toast = document.getElementById(`${type}-toast`);
+    const toastId = type === "success" ? "success-toast" : "error-toast";
+    const toast = document.getElementById(toastId);
     if (toast) {
-      toast.style.display = "none";
+      toast.classList.add("hidden");
+      setTimeout(() => {
+        toast.style.display = "none";
+      }, 300);
     }
   }
 
+  // Utility functions
   function scrollToBottom() {
     chatMessages.scrollTop = chatMessages.scrollHeight;
   }
 
-  function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  }
-
   function formatTime(date) {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    return `${hours}:${minutes}`;
   }
 
-  function getOrCreateSessionId() {
-    const urlParams = new URLSearchParams(window.location.search);
-    let sessionId = urlParams.get('session_id');
-    
-    if (!sessionId) {
-      sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-      urlParams.set('session_id', sessionId);
-      window.history.replaceState({}, '', `${window.location.pathname}?${urlParams}`);
-    }
-    
-    console.log('Current session ID:', sessionId);
-    return sessionId;
+  function escapeHtml(text) {
+    var map = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#039;'
+    };
+    return text.replace(/[&<>"']/g, function(m) { return map[m]; });
   }
-
-  function startNewSession() {
-    // Cancel any ongoing operations first
-    if (isRecording || isProcessing || isPlayingAudio) {
-      handleCancelClick();
-    }
-    
-    const newSessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-    const urlParams = new URLSearchParams(window.location.search);
-    urlParams.set('session_id', newSessionId);
-    window.history.replaceState({}, '', `${window.location.pathname}?${urlParams}`);
-    currentSessionId = newSessionId;
-    
-    // Clear chat interface
-    chatMessages.innerHTML = "";
-    chatMessages.style.display = "none";
-    welcomeScreen.style.display = "flex";
-    
-    // Reset conversation state
-    conversationCount = 0;
-    resetToIdle();
-    
-    console.log('Started new session:', currentSessionId);
-    showSuccess("New conversation started!");
-  }
-
-  function updateConnectionStatus() {
-    const isOnline = navigator.onLine;
-    connectionDot.className = `status-dot ${isOnline ? 'online' : 'offline'}`;
-    connectionStatus.textContent = isOnline ? 'Connected' : 'Offline';
-  }
-
-  async function performHealthCheck() {
-    try {
-      const response = await fetch("/health", {
-        method: "GET",
-        headers: { "Content-Type": "application/json" }
-      });
-      
-      if (response.ok) {
-        const healthData = await response.json();
-        console.log("Health check result:", healthData);
-        
-        if (healthData.status === "healthy") {
-          connectionDot.className = "status-dot online";
-          connectionStatus.textContent = "Connected";
-        } else if (healthData.status === "degraded") {
-          connectionDot.className = "status-dot";
-          connectionDot.style.backgroundColor = "#f59e0b";
-          connectionStatus.textContent = "Limited";
-        } else {
-          connectionDot.className = "status-dot offline";
-          connectionStatus.textContent = "Issues";
-        }
-      }
-    } catch (error) {
-      console.warn("Health check failed:", error);
-      connectionDot.className = "status-dot offline";
-      connectionStatus.textContent = "Unknown";
-    }
-  }
-
-  // Network status monitoring
-  window.addEventListener('online', () => {
-    updateConnectionStatus();
-    showSuccess("Connection restored!");
-    performHealthCheck();
-  });
-
-  window.addEventListener('offline', () => {
-    updateConnectionStatus();
-    showError("You're offline. Please check your connection.", "warning");
-  });
-
-  // Global error handler
-  window.addEventListener('error', (event) => {
-    console.error('Global error caught:', event.error);
-    showError("An unexpected error occurred. Please try again.");
-    resetToIdle();
-  });
-
-  // Keyboard shortcuts
-  document.addEventListener('keydown', (e) => {
-    // Spacebar to start recording (only when idle)
-    if (e.code === 'Space' && !e.target.matches('input, textarea, select')) {
-      e.preventDefault();
-      if (!isProcessing && !isRecording && !isPlayingAudio) {
-        handleRecordButtonClick();
-      }
-    }
-    
-    // Escape to cancel any ongoing operation
-    if (e.code === 'Escape') {
-      handleCancelClick();
-    }
-    
-    // Ctrl/Cmd + Enter for new session
-    if ((e.ctrlKey || e.metaKey) && e.code === 'Enter') {
-      e.preventDefault();
-      startNewSession();
-    }
-  });
-
-  // Prevent context menu on record button for better mobile experience
-  recordButton.addEventListener('contextmenu', (e) => {
-    e.preventDefault();
-  });
-
-  // Handle visibility change to pause recording if tab becomes hidden
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden && (isRecording || isProcessing || isPlayingAudio)) {
-      handleCancelClick();
-      showError("Operation paused because the tab became inactive.", "warning");
-    }
-  });
-
-  console.log("Voice Assistant initialized successfully");
 });
