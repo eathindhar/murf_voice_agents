@@ -1,7 +1,8 @@
-// Enhanced voice assistant with Claude.ai-inspired UI
+// Enhanced voice assistant with Claude.ai-inspired UI and Cancel functionality
 document.addEventListener("DOMContentLoaded", () => {
   // DOM Elements
   const recordButton = document.getElementById("recordButton");
+  const cancelButton = document.getElementById("cancelButton");
   const recordText = document.getElementById("record-text");
   const statusMessage = document.getElementById("status-message");
   const audioPlayer = document.getElementById("audio-player");
@@ -20,9 +21,11 @@ document.addEventListener("DOMContentLoaded", () => {
   let currentSessionId = getOrCreateSessionId();
   let isRecording = false;
   let isProcessing = false;
+  let isPlayingAudio = false;
   let mediaRecorder;
   let audioChunks = [];
   let conversationCount = 0;
+  let currentRequest = null; // For canceling ongoing requests
 
   // Initialize app
   initializeApp();
@@ -37,6 +40,9 @@ document.addEventListener("DOMContentLoaded", () => {
   function setupEventListeners() {
     // Record button
     recordButton.addEventListener("click", handleRecordButtonClick);
+    
+    // Cancel button
+    cancelButton.addEventListener("click", handleCancelClick);
     
     // New session button
     newSessionButton.addEventListener("click", startNewSession);
@@ -61,20 +67,32 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
 
-    // Audio playback ended - auto start recording
+    // Audio playback events
+    audioPlayer.addEventListener("play", () => {
+      isPlayingAudio = true;
+      updateStatusMessage("Playing response... Click cancel to stop", "success");
+      showCancelButton();
+    });
+
     audioPlayer.addEventListener("ended", () => {
-      if (conversationCount > 0 && !isRecording && !isProcessing) {
-        setTimeout(() => {
-          if (!isRecording && !isProcessing) {
-            handleRecordButtonClick();
-          }
-        }, 1000);
-      }
+      isPlayingAudio = false;
+      hideCancelButton();
+      updateStatusMessage("Response complete! Click to record another message");
+      setButtonState("idle");
+    });
+
+    audioPlayer.addEventListener("pause", () => {
+      isPlayingAudio = false;
+      hideCancelButton();
+      updateStatusMessage("Audio stopped");
+      setButtonState("idle");
     });
   }
 
   async function handleRecordButtonClick() {
-    if (isProcessing) return;
+    if (isProcessing || isPlayingAudio) {
+      return;
+    }
 
     if (!isRecording) {
       await startRecording();
@@ -83,9 +101,91 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  function handleCancelClick() {
+    if (isRecording) {
+      cancelRecording();
+    } else if (isProcessing) {
+      cancelProcessing();
+    } else if (isPlayingAudio) {
+      cancelAudioPlayback();
+    }
+  }
+
+  function cancelRecording() {
+    try {
+      if (mediaRecorder && mediaRecorder.state === "recording") {
+        mediaRecorder.stop();
+      }
+      
+      // Stop all tracks
+      if (mediaRecorder && mediaRecorder.stream) {
+        mediaRecorder.stream.getTracks().forEach(track => track.stop());
+      }
+      
+      isRecording = false;
+      hideCancelButton();
+      updateStatusMessage("Recording cancelled");
+      setButtonState("idle");
+      
+      showError("Recording cancelled by user", "warning");
+      
+    } catch (error) {
+      console.error("Error cancelling recording:", error);
+      resetToIdle();
+    }
+  }
+
+  function cancelProcessing() {
+    try {
+      // Cancel any ongoing fetch request
+      if (currentRequest) {
+        currentRequest.abort();
+        currentRequest = null;
+      }
+      
+      isProcessing = false;
+      hideCancelButton();
+      updateStatusMessage("Processing cancelled");
+      setButtonState("idle");
+      
+      showError("Processing cancelled by user", "warning");
+      
+    } catch (error) {
+      console.error("Error cancelling processing:", error);
+      resetToIdle();
+    }
+  }
+
+  function cancelAudioPlayback() {
+    try {
+      if (audioPlayer && !audioPlayer.paused) {
+        audioPlayer.pause();
+        audioPlayer.currentTime = 0;
+      }
+      
+      isPlayingAudio = false;
+      hideCancelButton();
+      updateStatusMessage("Audio playback stopped");
+      setButtonState("idle");
+      
+    } catch (error) {
+      console.error("Error cancelling audio playback:", error);
+      resetToIdle();
+    }
+  }
+
+  function showCancelButton() {
+    cancelButton.style.display = "flex";
+  }
+
+  function hideCancelButton() {
+    cancelButton.style.display = "none";
+  }
+
   async function startRecording() {
     try {
       setButtonState("requesting");
+      showCancelButton();
       updateStatusMessage("Requesting microphone access...");
       
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -98,7 +198,7 @@ document.addEventListener("DOMContentLoaded", () => {
       
       isRecording = true;
       setButtonState("recording");
-      updateStatusMessage("Listening... Speak your message", "recording");
+      updateStatusMessage("Recording... Click to stop or cancel", "recording");
       
       // Hide welcome screen and show chat
       showChatInterface();
@@ -116,9 +216,13 @@ document.addEventListener("DOMContentLoaded", () => {
       };
 
       mediaRecorder.onstop = () => {
-        isRecording = false;
-        processRecording();
         stream.getTracks().forEach(track => track.stop());
+        
+        if (isRecording) {
+          // Only process if not cancelled
+          isRecording = false;
+          processRecording();
+        }
       };
 
       mediaRecorder.onerror = (event) => {
@@ -152,13 +256,15 @@ document.addEventListener("DOMContentLoaded", () => {
     if (mediaRecorder && mediaRecorder.state === "recording") {
       mediaRecorder.stop();
       setButtonState("processing");
-      updateStatusMessage("Processing your message...", "processing");
+      updateStatusMessage("Processing your message... Click cancel to stop", "processing");
     }
   }
 
   async function processRecording() {
     try {
       isProcessing = true;
+      setButtonState("processing");
+      updateStatusMessage("Processing your message... Click cancel to stop", "processing");
       
       if (audioChunks.length === 0) {
         showError("No audio recorded. Please try again.");
@@ -180,12 +286,20 @@ document.addEventListener("DOMContentLoaded", () => {
       const filename = `recording_${Date.now()}.webm`;
       formData.append("audio_file", audioBlob, filename);
       
-      updateStatusMessage("Understanding your message...", "processing");
+      updateStatusMessage("Understanding your message... Click cancel to stop", "processing");
+      
+      // Create AbortController for cancellation
+      const controller = new AbortController();
+      currentRequest = controller;
       
       const response = await fetch(`/agent/chat/${currentSessionId}`, {
         method: "POST",
         body: formData,
+        signal: controller.signal
       });
+
+      // Clear the current request
+      currentRequest = null;
 
       const result = await response.json();
       
@@ -201,6 +315,12 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       
     } catch (error) {
+      if (error.name === 'AbortError') {
+        // Request was cancelled
+        console.log("Request cancelled by user");
+        return;
+      }
+      
       console.error("Error processing recording:", error);
       showError("Failed to process your message. Please try again.");
       resetToIdle();
@@ -215,14 +335,14 @@ document.addEventListener("DOMContentLoaded", () => {
     addAssistantMessage(result.ai_response);
     
     // Update status and play audio
-    updateStatusMessage("Playing response...", "success");
+    updateStatusMessage("Playing response... Click cancel to stop", "success");
     
     if (result.audio_url) {
       audioPlayer.src = result.audio_url;
       audioPlayer.play().then(() => {
         conversationCount++;
-        updateStatusMessage("Click to continue the conversation");
-        resetToIdle();
+        isProcessing = false;
+        // Audio events will handle state updates
       }).catch(error => {
         console.error("Audio play error:", error);
         updateStatusMessage("Response ready! Audio couldn't auto-play.");
@@ -250,7 +370,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     
     conversationCount++;
-    updateStatusMessage("Click to continue the conversation");
+    updateStatusMessage("Response complete! Click to record another message");
     resetToIdle();
   }
 
@@ -315,6 +435,9 @@ document.addEventListener("DOMContentLoaded", () => {
     stopIcon.style.display = "none";
     loadingIcon.style.display = "none";
     
+    // Enable/disable button based on state
+    recordButton.disabled = (state === "requesting" || state === "processing");
+    
     switch (state) {
       case "idle":
         micIcon.style.display = "block";
@@ -326,7 +449,7 @@ document.addEventListener("DOMContentLoaded", () => {
         break;
       case "recording":
         stopIcon.style.display = "block";
-        recordText.textContent = "Recording... Click to stop";
+        recordText.textContent = "Click to stop";
         break;
       case "processing":
         loadingIcon.style.display = "block";
@@ -343,6 +466,10 @@ document.addEventListener("DOMContentLoaded", () => {
   function resetToIdle() {
     isRecording = false;
     isProcessing = false;
+    isPlayingAudio = false;
+    currentRequest = null;
+    
+    hideCancelButton();
     setButtonState("idle");
     updateStatusMessage(conversationCount > 0 ? "Ready for your next message" : "Click the button to start talking");
   }
@@ -402,6 +529,11 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function startNewSession() {
+    // Cancel any ongoing operations first
+    if (isRecording || isProcessing || isPlayingAudio) {
+      handleCancelClick();
+    }
+    
     const newSessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
     const urlParams = new URLSearchParams(window.location.search);
     urlParams.set('session_id', newSessionId);
@@ -478,17 +610,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Keyboard shortcuts
   document.addEventListener('keydown', (e) => {
-    // Spacebar to start/stop recording (when not in input fields)
+    // Spacebar to start recording (only when idle)
     if (e.code === 'Space' && !e.target.matches('input, textarea, select')) {
       e.preventDefault();
-      if (!isProcessing) {
+      if (!isProcessing && !isRecording && !isPlayingAudio) {
         handleRecordButtonClick();
       }
     }
     
-    // Escape to stop recording
-    if (e.code === 'Escape' && isRecording) {
-      stopRecording();
+    // Escape to cancel any ongoing operation
+    if (e.code === 'Escape') {
+      handleCancelClick();
     }
     
     // Ctrl/Cmd + Enter for new session
@@ -505,9 +637,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Handle visibility change to pause recording if tab becomes hidden
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden && isRecording) {
-      stopRecording();
-      showError("Recording paused because the tab became inactive.", "warning");
+    if (document.hidden && (isRecording || isProcessing || isPlayingAudio)) {
+      handleCancelClick();
+      showError("Operation paused because the tab became inactive.", "warning");
     }
   });
 

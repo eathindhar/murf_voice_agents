@@ -284,19 +284,28 @@ html, body {
   font-weight: 500;
 }
 
-/* Record Button */
-.record-section {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-}
-
-.button-group {
+/* Control Section */
+.control-section {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 16px;
+  width: 100%;
+}
+
+.button-group {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+}
+
+/* Record Button */
+.record-section {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  position: relative;
 }
 
 .record-button {
@@ -315,6 +324,11 @@ html, body {
   transform: scale(0.95);
 }
 
+.record-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
 .record-button-inner {
   position: relative;
   width: 100%;
@@ -329,7 +343,7 @@ html, body {
   overflow: hidden;
 }
 
-.record-button:hover .record-button-inner {
+.record-button:not(:disabled):hover .record-button-inner {
   transform: scale(1.05);
   box-shadow: 0 6px 20px rgba(204, 122, 0, 0.4);
 }
@@ -354,41 +368,46 @@ html, body {
   font-size: 14px;
   font-weight: 500;
   color: #6b7280;
-  margin-top: 8px;
+  text-align: center;
 }
 
 /* Cancel Button */
 .cancel-button {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid #ef4444;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px 20px;
-  background: #f3f4f6;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  color: #374151;
+  justify-content: center;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.2s ease;
+  outline: none;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.15);
 }
 
 .cancel-button:hover {
-  background: #e5e7eb;
-  border-color: #9ca3af;
-  color: #1f2937;
+  background: #ef4444;
+  color: white;
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
 }
 
 .cancel-button:active {
-  transform: scale(0.98);
+  transform: scale(0.95);
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.3);
 }
 
 .cancel-button svg {
-  color: #6b7280;
+  width: 18px;
+  height: 18px;
+  color: #ef4444;
+  transition: color 0.2s ease;
 }
 
 .cancel-button:hover svg {
-  color: #374151;
+  color: white;
 }
 
 /* Ripple Effect */
@@ -589,6 +608,20 @@ html, body {
     height: 70px;
   }
   
+  .cancel-button {
+    width: 44px;
+    height: 44px;
+  }
+  
+  .cancel-button svg {
+    width: 16px;
+    height: 16px;
+  }
+  
+  .button-group {
+    gap: 16px;
+  }
+  
   .toast {
     top: 16px;
     right: 16px;
@@ -636,6 +669,20 @@ html, body {
   .record-icon svg {
     width: 20px;
     height: 20px;
+  }
+  
+  .cancel-button {
+    width: 40px;
+    height: 40px;
+  }
+  
+  .cancel-button svg {
+    width: 14px;
+    height: 14px;
+  }
+  
+  .button-group {
+    gap: 14px;
   }
 }
 
@@ -698,6 +745,23 @@ html, body {
   .input-area {
     background: #171717;
     border-top-color: #262626;
+  }
+  
+  .cancel-button {
+    background: #171717;
+    border-color: #ef4444;
+  }
+  
+  .cancel-button svg {
+    color: #ef4444;
+  }
+  
+  .cancel-button:hover {
+    background: #ef4444;
+  }
+  
+  .cancel-button:hover svg {
+    color: white;
   }
   
   .toast {
