@@ -1,7 +1,8 @@
 import os
 import shutil
+import json
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request, HTTPException, UploadFile, File
+from fastapi import FastAPI, Request, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
@@ -40,6 +41,42 @@ UPLOAD_FOLDER.mkdir(exist_ok=True)
 # In-memory chat history storage
 chat_histories: Dict[str, List[Dict[str, str]]] = {}
 
+# WebSocket Connection Manager
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+        logger.info(f"WebSocket client connected. Total connections: {len(self.active_connections)}")
+
+    def disconnect(self, websocket: WebSocket):
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+        logger.info(f"WebSocket client disconnected. Total connections: {len(self.active_connections)}")
+
+    async def send_personal_message(self, message: str, websocket: WebSocket):
+        try:
+            await websocket.send_text(message)
+        except Exception as e:
+            logger.error(f"Error sending message to WebSocket: {e}")
+
+    async def broadcast(self, message: str):
+        disconnected = []
+        for connection in self.active_connections:
+            try:
+                await connection.send_text(message)
+            except Exception as e:
+                logger.error(f"Error broadcasting to connection: {e}")
+                disconnected.append(connection)
+        
+        # Remove disconnected connections
+        for connection in disconnected:
+            self.disconnect(connection)
+
+manager = ConnectionManager()
+
 # Pydantic models for request/response bodies
 class TTSRequest(BaseModel):
     text: str = "The quick brown fox jumps over the lazy dog"
@@ -57,6 +94,13 @@ class ErrorResponse(BaseModel):
     fallback_message: str
     audio_url: Optional[str] = None
     status: str = "error"
+
+class WebSocketMessage(BaseModel):
+    type: str = "echo"
+    original_message: str
+    timestamp: str
+    server_response: str
+    session_info: Optional[Dict] = None
 
 # Helper functions
 def get_or_create_session(session_id: str) -> List[Dict[str, str]]:
@@ -132,3 +176,87 @@ async def chat_with_agent(session_id: str, audio_file: UploadFile = File(...)):
         audio_url=audio_url,
         status="success"
     ).dict()
+
+# WebSocket endpoint
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """WebSocket endpoint that echoes back received messages with additional server info"""
+    await manager.connect(websocket)
+    
+    try:
+        while True:
+            # Wait for message from client
+            data = await websocket.receive_text()
+            
+            # Log the received message
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            logger.info(f"[WebSocket] [{timestamp}] Received message: {data}")
+            
+            # Try to parse as JSON, fall back to plain text
+            try:
+                parsed_data = json.loads(data)
+                message_content = parsed_data.get("message", data)
+                message_type = parsed_data.get("type", "text")
+            except json.JSONDecodeError:
+                message_content = data
+                message_type = "text"
+            
+            # Create echo response with server information
+            echo_response = WebSocketMessage(
+                type="echo",
+                original_message=message_content,
+                timestamp=timestamp,
+                server_response=f"Echo: {message_content}",
+                session_info={
+                    "active_connections": len(manager.active_connections),
+                    "active_chat_sessions": len(chat_histories),
+                    "message_type": message_type,
+                    "server_status": "operational"
+                }
+            )
+            
+            # Send echo back to client
+            await manager.send_personal_message(echo_response.json(), websocket)
+            
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+        logger.info("WebSocket client disconnected normally")
+    except Exception as e:
+        logger.error(f"Error in WebSocket connection: {e}")
+        manager.disconnect(websocket)
+
+# WebSocket broadcast endpoint (for testing)
+@app.post("/ws/broadcast")
+async def broadcast_message(message: dict):
+    """Endpoint to broadcast a message to all connected WebSocket clients"""
+    try:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        broadcast_data = {
+            "type": "broadcast",
+            "message": message.get("message", "Server broadcast"),
+            "timestamp": timestamp,
+            "from": "server"
+        }
+        
+        await manager.broadcast(json.dumps(broadcast_data))
+        
+        return {
+            "status": "success",
+            "message": "Broadcast sent",
+            "recipients": len(manager.active_connections),
+            "timestamp": timestamp
+        }
+    except Exception as e:
+        logger.error(f"Broadcast failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Broadcast failed: {str(e)}")
+
+# WebSocket status endpoint
+@app.get("/ws/status")
+async def websocket_status():
+    """Get WebSocket server status"""
+    return {
+        "active_connections": len(manager.active_connections),
+        "active_chat_sessions": len(chat_histories),
+        "server_time": datetime.now().isoformat(),
+        "status": "operational"
+    }
