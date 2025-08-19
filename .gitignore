@@ -1,4 +1,5 @@
 # Byte-compiled / optimized / DLL files
+audio_recordings/
 dev/
 uploads/
 __pycache__/
