@@ -1,69 +1,321 @@
+/* Main Layout */
 body {
-            background-color: #f0f2f5;
-        }
-        .chat-container {
-            max-width: 600px;
-            background-color: #ffffff;
-            border-radius: 15px;
-            padding: 2rem;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-        }
-        .record-btn {
-            width: 100px;
-            height: 100px;
-            border-radius: 50%;
-            background-color: #0d6efd;
-            border: none;
-            color: white;
-            font-size: 2rem;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            transition: all 0.3s ease;
-        }
-        .record-btn:hover {
-            background-color: #0b5ed7;
-        }
-        .record-btn.recording {
-            background-color: #dc3545;
-            animation: pulse 1.5s infinite;
-        }
-        @keyframes pulse {
-            0% {
-                box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7);
-            }
-            70% {
-                box-shadow: 0 0 0 20px rgba(220, 53, 69, 0);
-            }
-            100% {
-                box-shadow: 0 0 0 0 rgba(220, 53, 69, 0);
-            }
-        }
-        .status-display {
-            font-size: 1.1rem;
-            color: #6c757d;
-        }
-        .transcription-container {
-            background-color: #f8f9fa;
-            border-radius: 10px;
-            padding: 1.5rem;
-            margin-top: 2rem;
-            border: 2px solid #e9ecef;
-        }
-        .transcription-text {
-            font-size: 1rem;
-            line-height: 1.5;
-            color: #495057;
-            min-height: 60px;
-            font-style: italic;
-        }
-        .final-transcript {
-            font-weight: 600;
-            color: #198754 !important;
-        }
-        .transcription-label {
-            font-size: 0.9rem;
-            font-weight: 600;
-            color: #6c757d;
-            margin-bottom: 0.5rem;
-        }
+    background-color: #0d0d0d;
+    color: #ffffff;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.main-container {
+    width: 60%;
+    height: 100vh;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    background-color: #1a1a1a;
+    border-left: 1px solid #333;
+    border-right: 1px solid #333;
+}
+
+/* Header */
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid #333;
+    background-color: #0d0d0d;
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.brand-icon {
+    width: 32px;
+    height: 32px;
+    background-color: #ff8c00;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+    font-weight: bold;
+    font-size: 1.2rem;
+}
+
+.brand-name {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.new-chat-btn {
+    background-color: #333;
+    border: 1px solid #444;
+    color: #cccccc;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.new-chat-btn:hover {
+    background-color: #444;
+    border-color: #555;
+}
+
+.connection-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    color: #cccccc;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    background-color: #22c55e;
+    border-radius: 50%;
+}
+
+/* Chat Area */
+.chat-area {
+    flex: 1;
+    padding: 2rem;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.welcome-message {
+    text-align: center;
+    margin-top: 2rem;
+}
+
+.welcome-message h3 {
+    color: #ffffff;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+}
+
+.welcome-message p {
+    color: #888;
+    margin: 0;
+}
+
+/* Chat Bubbles */
+.chat-bubble {
+    max-width: 80%;
+    padding: 1rem 1.25rem;
+    border-radius: 18px;
+    margin-bottom: 0.5rem;
+    word-wrap: break-word;
+    line-height: 1.5;
+}
+
+.user-bubble {
+    background-color: #404040;
+    color: #ffffff;
+    align-self: flex-end;
+    margin-left: auto;
+    border-bottom-right-radius: 6px;
+}
+
+.transcription-bubble {
+    background-color: #2a2a2a;
+    color: #ffffff;
+    align-self: flex-start;
+    margin-right: auto;
+    border-bottom-left-radius: 6px;
+    border-left: 3px solid #8b5cf6;
+}
+
+.bubble-timestamp {
+    font-size: 0.75rem;
+    color: #888;
+    margin-top: 0.25rem;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+}
+
+.bubble-text {
+    font-size: 0.95rem;
+}
+
+.transcription-bubble .bubble-text {
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    font-size: 0.875rem;
+}
+
+/* Audio Controls */
+.audio-controls {
+    padding: 1.5rem;
+    border-top: 1px solid #333;
+    background-color: #1a1a1a;
+    text-align: center;
+}
+
+.status-text {
+    font-size: 0.9rem;
+    color: #22c55e;
+    margin-bottom: 1rem;
+    min-height: 1.2rem;
+}
+
+.status-text.error {
+    color: #ef4444;
+}
+
+.controls-row {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.record-btn {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background-color: #8b5cf6;
+    border: none;
+    color: white;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.record-btn:hover {
+    background-color: #7c3aed;
+    transform: scale(1.05);
+}
+
+.record-btn.recording {
+    background-color: #8b5cf6;
+    animation: pulse 2s infinite;
+}
+
+.record-btn.recording .mic-icon {
+    animation: breathe 1.5s infinite ease-in-out;
+}
+
+.cancel-btn {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background-color: transparent;
+    border: 2px solid #ef4444;
+    color: #ef4444;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.cancel-btn:hover {
+    background-color: #ef4444;
+    color: white;
+}
+
+.processing-status {
+    font-size: 0.875rem;
+    color: #888;
+    font-style: italic;
+}
+
+/* Animations */
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.7);
+    }
+    70% {
+        box-shadow: 0 0 0 20px rgba(139, 92, 246, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(139, 92, 246, 0);
+    }
+}
+
+@keyframes breathe {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.1);
+    }
+}
+
+/* Scrollbar */
+.chat-area::-webkit-scrollbar {
+    width: 6px;
+}
+
+.chat-area::-webkit-scrollbar-track {
+    background: #1a1a1a;
+}
+
+.chat-area::-webkit-scrollbar-thumb {
+    background: #404040;
+    border-radius: 3px;
+}
+
+.chat-area::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+/* Utility Classes */
+.d-none {
+    display: none !important;
+}
+
+/* Responsive Design */
+@media (max-width: 1200px) {
+    .main-container {
+        width: 70%;
+    }
+}
+
+@media (max-width: 768px) {
+    .main-container {
+        width: 100%;
+        border: none;
+    }
+    
+    .header {
+        padding: 1rem;
+    }
+    
+    .chat-area {
+        padding: 1rem;
+    }
+    
+    .record-btn {
+        width: 70px;
+        height: 70px;
+    }
+    
+    .cancel-btn {
+        width: 45px;
+        height: 45px;
+    }
+}

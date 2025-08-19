@@ -17,9 +17,55 @@ document.addEventListener("DOMContentLoaded", async () => {
     let socket = null;
 
     const recordBtn = document.getElementById("recordBtn");
+    const cancelBtn = document.getElementById("cancelBtn");
     const statusDisplay = document.getElementById("statusDisplay");
-    const transcriptionDisplay = document.getElementById("transcriptionDisplay");
-    const currentTranscript = document.getElementById("currentTranscript");
+    const processingStatus = document.getElementById("processingStatus");
+    const chatArea = document.getElementById("chatArea");
+
+    // Helper function to format timestamp (MM:SS format)
+    const formatTimestamp = () => {
+        const now = new Date();
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const seconds = String(now.getSeconds()).padStart(2, '0');
+        return `${minutes}:${seconds}`;
+    };
+
+    // Add transcription as chat bubble
+    const addTranscriptionBubble = (text, isFinal = false) => {
+        if (!text.trim()) return;
+
+        // Remove welcome message if it exists
+        const welcomeMessage = chatArea.querySelector('.welcome-message');
+        if (welcomeMessage) {
+            welcomeMessage.remove();
+        }
+
+        const timestamp = formatTimestamp();
+        
+        // Create bubble element
+        const bubble = document.createElement('div');
+        bubble.className = 'chat-bubble transcription-bubble';
+        
+        const bubbleText = document.createElement('div');
+        bubbleText.className = 'bubble-text';
+        bubbleText.textContent = `${timestamp} : "${text}"`;
+        
+        const bubbleTimestamp = document.createElement('div');
+        bubbleTimestamp.className = 'bubble-timestamp';
+        bubbleTimestamp.textContent = new Date().toLocaleTimeString('en-US', { 
+            hour12: true, 
+            hour: 'numeric', 
+            minute: '2-digit' 
+        });
+        
+        bubble.appendChild(bubbleText);
+        bubble.appendChild(bubbleTimestamp);
+        
+        chatArea.appendChild(bubble);
+        
+        // Auto-scroll to bottom
+        chatArea.scrollTop = chatArea.scrollHeight;
+    };
 
     const startRecording = async () => {
         if (!navigator.mediaDevices?.getUserMedia) {
@@ -29,11 +75,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         isRecording = true;
         recordBtn.classList.add("recording");
-        statusDisplay.textContent = "Streaming audio... Press the button to stop.";
-        
-        // Clear previous transcription
-        currentTranscript.textContent = "";
-        transcriptionDisplay.classList.remove("d-none");
+        cancelBtn.classList.remove("d-none");
+        statusDisplay.textContent = "Connecting to transcription service...";
+        statusDisplay.classList.remove("error");
 
         try {
             // Establish WebSocket connection
@@ -42,7 +86,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
             socket.onopen = async () => {
                 console.log("WebSocket connection established for streaming transcription.");
-                statusDisplay.textContent = "Connected. Speaking...";
+                statusDisplay.textContent = "🎤 Listening... Speak now!";
 
                 try {
                     // Get microphone access
@@ -56,7 +100,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                     source = audioContext.createMediaStreamSource(stream);
                     
                     // Create ScriptProcessorNode for processing audio chunks
-                    processor = audioContext.createScriptProcessor(4096, 1, 1); // Mono, 4096 buffer size
+                    processor = audioContext.createScriptProcessor(4096, 1, 1);
 
                     processor.onaudioprocess = (event) => {
                         const inputData = event.inputBuffer.getChannelData(0);
@@ -70,7 +114,6 @@ document.addEventListener("DOMContentLoaded", async () => {
                         
                         // Send PCM data to server if WebSocket is open
                         if (socket && socket.readyState === WebSocket.OPEN) {
-                            console.log(`Sending PCM chunk of size: ${pcmData.buffer.byteLength} bytes`);
                             socket.send(pcmData.buffer);
                         }
                     };
@@ -84,7 +127,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
                 } catch (micError) {
                     console.error("Error accessing microphone:", micError);
-                    alert("Could not access microphone. Please check permissions.");
+                    showError("Could not access microphone. Please check permissions.");
                     stopRecording();
                 }
             };
@@ -97,22 +140,12 @@ document.addEventListener("DOMContentLoaded", async () => {
                     console.log("Parsed message data:", data);
                     
                     if (data.type === "transcription") {
-                        // Update the transcription display
-                        currentTranscript.textContent = data.text;
-                        console.log(`Updating UI with transcription: ${data.text}`);
-                        
-                        // If it's a final transcription, you might want to add some styling
-                        if (data.is_final) {
-                            currentTranscript.classList.add("final-transcript");
-                        } else {
-                            currentTranscript.classList.remove("final-transcript");
-                        }
-                        
+                        // Add transcription with timestamp
+                        addTranscriptionBubble(data.text, data.is_final);
                         console.log(`Transcription ${data.is_final ? '(final)' : '(partial)'}: ${data.text}`);
                     } else if (data.type === "error") {
                         console.error("Transcription error:", data.message);
-                        statusDisplay.textContent = `Error: ${data.message}`;
-                        statusDisplay.classList.add("text-danger");
+                        showError(`Transcription error: ${data.message}`);
                     } else if (data.type === "status") {
                         console.log("Status message:", data.message);
                         statusDisplay.textContent = data.message;
@@ -124,19 +157,19 @@ document.addEventListener("DOMContentLoaded", async () => {
 
             socket.onclose = () => {
                 console.log("WebSocket connection closed.");
-                statusDisplay.textContent = "Transcription session ended.";
-                statusDisplay.classList.remove("text-danger");
+                if (isRecording) {
+                    statusDisplay.textContent = "Session ended";
+                }
             };
 
             socket.onerror = (error) => {
                 console.error("WebSocket error:", error);
-                statusDisplay.textContent = "Connection error occurred.";
-                statusDisplay.classList.add("text-danger");
+                showError("Connection error occurred");
             };
 
         } catch (err) {
             console.error("Error starting recording:", err);
-            alert("Failed to start recording session.");
+            showError("Failed to start recording session");
             stopRecording();
         }
     };
@@ -146,8 +179,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         isRecording = false;
         recordBtn.classList.remove("recording");
-        statusDisplay.textContent = "Stopping recording...";
-        statusDisplay.classList.remove("text-danger");
+        cancelBtn.classList.add("d-none");
+        statusDisplay.textContent = "Processing...";
+        statusDisplay.classList.remove("error");
+        processingStatus.classList.remove("d-none");
 
         // Clean up audio processing
         if (processor) {
@@ -178,14 +213,39 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
         socket = null;
 
-        statusDisplay.textContent = "Ready to chat!";
+        // Reset status after a delay
+        setTimeout(() => {
+            statusDisplay.textContent = "Ready to chat!";
+            processingStatus.classList.add("d-none");
+        }, 2000);
     };
 
+    const showError = (message) => {
+        statusDisplay.textContent = message;
+        statusDisplay.classList.add("error");
+        processingStatus.classList.add("d-none");
+        
+        // Clear error styling after a few seconds
+        setTimeout(() => {
+            statusDisplay.classList.remove("error");
+            if (!isRecording) {
+                statusDisplay.textContent = "Ready to chat!";
+            }
+        }, 5000);
+    };
+
+    // Event listeners
     recordBtn.addEventListener("click", () => {
         if (isRecording) {
             stopRecording();
         } else {
             startRecording();
+        }
+    });
+
+    cancelBtn.addEventListener("click", () => {
+        if (isRecording) {
+            stopRecording();
         }
     });
 
@@ -195,4 +255,6 @@ document.addEventListener("DOMContentLoaded", async () => {
             stopRecording();
         }
     });
+
+    console.log('Voice Agent UI initialized');
 });

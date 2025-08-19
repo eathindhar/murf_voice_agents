@@ -2,8 +2,9 @@
 
 import google.generativeai as genai
 import os
+from dotenv import load_dotenv
 from typing import List, Dict, Any, Tuple
-
+load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 if GEMINI_API_KEY:
