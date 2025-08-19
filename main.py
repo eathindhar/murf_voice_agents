@@ -1,6 +1,8 @@
 import os
 import shutil
 import json
+import uuid
+import asyncio
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
@@ -10,7 +12,7 @@ from pydantic import BaseModel
 from pathlib import Path
 from datetime import datetime
 import logging
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, BinaryIO
 from services.stt_service import transcribe_audio
 from services.llm_service import generate_llm_response
 from services.tts_service import generate_tts
@@ -34,33 +36,81 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # Initialize Jinja2 templates
 templates = Jinja2Templates(directory="templates")
 
-# Define the upload folder
+# Define the upload and audio folders
 UPLOAD_FOLDER = Path("uploads")
+AUDIO_FOLDER = Path("audio_recordings")
 UPLOAD_FOLDER.mkdir(exist_ok=True)
+AUDIO_FOLDER.mkdir(exist_ok=True)
 
 # In-memory chat history storage
 chat_histories: Dict[str, List[Dict[str, str]]] = {}
+
+# Audio streaming session storage
+active_audio_sessions: Dict[str, Dict] = {}
 
 # WebSocket Connection Manager
 class ConnectionManager:
     def __init__(self):
         self.active_connections: List[WebSocket] = []
+        self.audio_connections: Dict[str, WebSocket] = {}  # session_id -> websocket
 
-    async def connect(self, websocket: WebSocket):
+    async def connect(self, websocket: WebSocket, connection_type: str = "general"):
         await websocket.accept()
         self.active_connections.append(websocket)
-        logger.info(f"WebSocket client connected. Total connections: {len(self.active_connections)}")
+        logger.info(f"WebSocket client connected ({connection_type}). Total connections: {len(self.active_connections)}")
+
+    async def connect_audio_stream(self, websocket: WebSocket, session_id: str):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+        self.audio_connections[session_id] = websocket
+        logger.info(f"Audio streaming client connected for session: {session_id}")
 
     def disconnect(self, websocket: WebSocket):
         if websocket in self.active_connections:
             self.active_connections.remove(websocket)
+        
+        # Remove from audio connections if present
+        session_to_remove = None
+        for session_id, ws in self.audio_connections.items():
+            if ws == websocket:
+                session_to_remove = session_id
+                break
+        
+        if session_to_remove:
+            del self.audio_connections[session_to_remove]
+            # Clean up audio session
+            if session_to_remove in active_audio_sessions:
+                self._cleanup_audio_session(session_to_remove)
+        
         logger.info(f"WebSocket client disconnected. Total connections: {len(self.active_connections)}")
+
+    def _cleanup_audio_session(self, session_id: str):
+        """Clean up audio session resources"""
+        if session_id in active_audio_sessions:
+            session_data = active_audio_sessions[session_id]
+            if 'file_handle' in session_data and session_data['file_handle']:
+                try:
+                    session_data['file_handle'].close()
+                    logger.info(f"Closed audio file for session: {session_id}")
+                except Exception as e:
+                    logger.error(f"Error closing audio file for session {session_id}: {e}")
+            
+            del active_audio_sessions[session_id]
+            logger.info(f"Cleaned up audio session: {session_id}")
 
     async def send_personal_message(self, message: str, websocket: WebSocket):
         try:
             await websocket.send_text(message)
         except Exception as e:
             logger.error(f"Error sending message to WebSocket: {e}")
+
+    async def send_audio_response(self, session_id: str, message: dict):
+        """Send response to audio streaming client"""
+        if session_id in self.audio_connections:
+            try:
+                await self.audio_connections[session_id].send_text(json.dumps(message))
+            except Exception as e:
+                logger.error(f"Error sending audio response to session {session_id}: {e}")
 
     async def broadcast(self, message: str):
         disconnected = []
@@ -102,6 +152,13 @@ class WebSocketMessage(BaseModel):
     server_response: str
     session_info: Optional[Dict] = None
 
+class AudioStreamMessage(BaseModel):
+    type: str
+    session_id: str
+    message: str
+    timestamp: str
+    data: Optional[Dict] = None
+
 # Helper functions
 def get_or_create_session(session_id: str) -> List[Dict[str, str]]:
     """Get existing chat history or create new session"""
@@ -119,6 +176,30 @@ def add_message_to_history(session_id: str, role: str, content: str):
         logger.info(f"Added {role} message to session {session_id}: {content[:50]}...")
     except Exception as e:
         logger.error(f"Failed to add message to history: {e}")
+
+def create_audio_session(session_id: str) -> str:
+    """Create a new audio recording session"""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"audio_stream_{session_id}_{timestamp}.wav"
+    filepath = AUDIO_FOLDER / filename
+    
+    try:
+        # Create the file and store session info
+        file_handle = open(filepath, "wb")
+        active_audio_sessions[session_id] = {
+            'filename': filename,
+            'filepath': filepath,
+            'file_handle': file_handle,
+            'start_time': datetime.now(),
+            'chunk_count': 0,
+            'total_bytes': 0
+        }
+        
+        logger.info(f"Created audio session: {session_id} -> {filename}")
+        return filename
+    except Exception as e:
+        logger.error(f"Failed to create audio session {session_id}: {e}")
+        raise
 
 # Routes
 @app.get("/", response_class=HTMLResponse)
@@ -177,11 +258,131 @@ async def chat_with_agent(session_id: str, audio_file: UploadFile = File(...)):
         status="success"
     ).dict()
 
-# WebSocket endpoint
+# Audio streaming WebSocket endpoint
+@app.websocket("/ws/audio/{session_id}")
+async def audio_streaming_websocket(websocket: WebSocket, session_id: str):
+    """WebSocket endpoint for streaming audio data"""
+    await manager.connect_audio_stream(websocket, session_id)
+    
+    try:
+        # Send initial connection confirmation
+        await manager.send_audio_response(session_id, {
+            "type": "connection_established",
+            "session_id": session_id,
+            "message": "Audio streaming connection established",
+            "timestamp": datetime.now().isoformat()
+        })
+        
+        while True:
+            try:
+                # Try to receive text message first (for commands)
+                message = await websocket.receive_text()
+                data = json.loads(message)
+                
+                if data.get("type") == "start_recording":
+                    # Start a new recording session
+                    filename = create_audio_session(session_id)
+                    await manager.send_audio_response(session_id, {
+                        "type": "recording_started",
+                        "session_id": session_id,
+                        "filename": filename,
+                        "message": "Recording started successfully",
+                        "timestamp": datetime.now().isoformat()
+                    })
+                
+                elif data.get("type") == "stop_recording":
+                    # Stop recording and close file
+                    if session_id in active_audio_sessions:
+                        session_data = active_audio_sessions[session_id]
+                        session_data['file_handle'].close()
+                        
+                        # Send completion response
+                        await manager.send_audio_response(session_id, {
+                            "type": "recording_stopped",
+                            "session_id": session_id,
+                            "filename": session_data['filename'],
+                            "message": "Recording stopped successfully",
+                            "duration": str(datetime.now() - session_data['start_time']),
+                            "chunk_count": session_data['chunk_count'],
+                            "total_bytes": session_data['total_bytes'],
+                            "timestamp": datetime.now().isoformat()
+                        })
+                        
+                        # Clean up session
+                        del active_audio_sessions[session_id]
+                    else:
+                        await manager.send_audio_response(session_id, {
+                            "type": "error",
+                            "message": "No active recording session found",
+                            "timestamp": datetime.now().isoformat()
+                        })
+                
+                else:
+                    # Echo other text messages
+                    await manager.send_audio_response(session_id, {
+                        "type": "echo",
+                        "original_message": data,
+                        "timestamp": datetime.now().isoformat()
+                    })
+                    
+            except json.JSONDecodeError:
+                # If not JSON, try to receive binary data (audio chunks)
+                try:
+                    audio_data = await websocket.receive_bytes()
+                    
+                    # Process audio chunk
+                    if session_id in active_audio_sessions:
+                        session_data = active_audio_sessions[session_id]
+                        
+                        # Write audio data to file
+                        session_data['file_handle'].write(audio_data)
+                        session_data['file_handle'].flush()  # Ensure data is written
+                        
+                        # Update session statistics
+                        session_data['chunk_count'] += 1
+                        session_data['total_bytes'] += len(audio_data)
+                        
+                        # Log every 50 chunks to avoid spam
+                        if session_data['chunk_count'] % 50 == 0:
+                            logger.info(f"Session {session_id}: Received {session_data['chunk_count']} chunks, {session_data['total_bytes']} bytes total")
+                        
+                        # Send periodic status updates (every 100 chunks)
+                        if session_data['chunk_count'] % 100 == 0:
+                            await manager.send_audio_response(session_id, {
+                                "type": "recording_status",
+                                "session_id": session_id,
+                                "chunk_count": session_data['chunk_count'],
+                                "total_bytes": session_data['total_bytes'],
+                                "duration": str(datetime.now() - session_data['start_time']),
+                                "timestamp": datetime.now().isoformat()
+                            })
+                    else:
+                        await manager.send_audio_response(session_id, {
+                            "type": "error",
+                            "message": "No active recording session. Send 'start_recording' command first.",
+                            "timestamp": datetime.now().isoformat()
+                        })
+                        
+                except Exception as e:
+                    logger.error(f"Error processing audio data: {e}")
+                    await manager.send_audio_response(session_id, {
+                        "type": "error",
+                        "message": f"Error processing audio data: {str(e)}",
+                        "timestamp": datetime.now().isoformat()
+                    })
+            
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+        logger.info(f"Audio streaming client disconnected: {session_id}")
+    except Exception as e:
+        logger.error(f"Error in audio streaming WebSocket: {e}")
+        manager.disconnect(websocket)
+
+# Regular WebSocket endpoint (existing functionality)
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint that echoes back received messages with additional server info"""
-    await manager.connect(websocket)
+    await manager.connect(websocket, "general")
     
     try:
         while True:
@@ -210,6 +411,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 session_info={
                     "active_connections": len(manager.active_connections),
                     "active_chat_sessions": len(chat_histories),
+                    "active_audio_sessions": len(active_audio_sessions),
                     "message_type": message_type,
                     "server_status": "operational"
                 }
@@ -224,6 +426,62 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         logger.error(f"Error in WebSocket connection: {e}")
         manager.disconnect(websocket)
+
+# Get audio recordings
+@app.get("/audio/recordings")
+async def list_audio_recordings():
+    """List all saved audio recordings"""
+    try:
+        recordings = []
+        for file_path in AUDIO_FOLDER.glob("*.wav"):
+            stat = file_path.stat()
+            recordings.append({
+                "filename": file_path.name,
+                "size": stat.st_size,
+                "created": datetime.fromtimestamp(stat.st_ctime).isoformat(),
+                "modified": datetime.fromtimestamp(stat.st_mtime).isoformat()
+            })
+        
+        return {
+            "recordings": recordings,
+            "total_count": len(recordings),
+            "active_sessions": len(active_audio_sessions)
+        }
+    except Exception as e:
+        logger.error(f"Error listing recordings: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Download audio recording
+@app.get("/audio/recordings/{filename}")
+async def download_audio_recording(filename: str):
+    """Download a specific audio recording"""
+    file_path = AUDIO_FOLDER / filename
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Recording not found")
+    
+    return FileResponse(
+        path=file_path,
+        media_type="audio/wav",
+        filename=filename
+    )
+
+# Audio session status
+@app.get("/audio/session/{session_id}")
+async def get_audio_session_status(session_id: str):
+    """Get status of an active audio session"""
+    if session_id not in active_audio_sessions:
+        raise HTTPException(status_code=404, detail="Audio session not found")
+    
+    session_data = active_audio_sessions[session_id]
+    return {
+        "session_id": session_id,
+        "filename": session_data['filename'],
+        "start_time": session_data['start_time'].isoformat(),
+        "duration": str(datetime.now() - session_data['start_time']),
+        "chunk_count": session_data['chunk_count'],
+        "total_bytes": session_data['total_bytes'],
+        "status": "active"
+    }
 
 # WebSocket broadcast endpoint (for testing)
 @app.post("/ws/broadcast")
@@ -257,6 +515,14 @@ async def websocket_status():
     return {
         "active_connections": len(manager.active_connections),
         "active_chat_sessions": len(chat_histories),
+        "active_audio_sessions": len(active_audio_sessions),
+        "audio_connections": len(manager.audio_connections),
         "server_time": datetime.now().isoformat(),
         "status": "operational"
     }
+
+# Health check endpoint
+@app.get("/health")
+async def health_check():
+    """Health check endpoint to verify server status."""
+    return {"status": "ok"}

@@ -9,6 +9,147 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
       rel="stylesheet"
     />
+    <style>
+      /* Additional styles for streaming functionality */
+      .streaming-controls {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-top: 16px;
+        padding: 16px;
+        background: rgba(0, 0, 0, 0.05);
+        border-radius: 12px;
+      }
+
+      .streaming-toggle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .toggle-switch {
+        position: relative;
+        width: 44px;
+        height: 24px;
+        background: #e5e5e5;
+        border-radius: 12px;
+        cursor: pointer;
+        transition: background 0.3s ease;
+      }
+
+      .toggle-switch.active {
+        background: #cc7a00;
+      }
+
+      .toggle-switch::after {
+        content: '';
+        position: absolute;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: white;
+        top: 2px;
+        left: 2px;
+        transition: left 0.3s ease;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+      }
+
+      .toggle-switch.active::after {
+        left: 22px;
+      }
+
+      .streaming-info {
+        font-size: 12px;
+        color: #6b7280;
+        background: rgba(0, 0, 0, 0.05);
+        padding: 8px 12px;
+        border-radius: 6px;
+        margin-top: 8px;
+      }
+
+      .visualizer-container {
+        margin-top: 16px;
+        padding: 16px;
+        background: rgba(0, 0, 0, 0.05);
+        border-radius: 12px;
+        display: none;
+      }
+
+      .audio-visualizer {
+        width: 100%;
+        height: 60px;
+        background: rgba(0,0,0,0.1);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .visualizer-bar {
+        width: 3px;
+        background: linear-gradient(to top, #cc7a00, #d97706);
+        margin: 0 1px;
+        border-radius: 1.5px;
+        transition: height 0.1s ease;
+        min-height: 4px;
+      }
+
+      .streaming-status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 12px;
+        font-size: 13px;
+        color: #6b7280;
+      }
+
+      .stream-indicator {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #10b981;
+        animation: pulse-stream 1.5s infinite;
+      }
+
+      .stream-indicator.inactive {
+        background: #6b7280;
+        animation: none;
+      }
+
+      @keyframes pulse-stream {
+        0%, 100% { opacity: 0.5; transform: scale(1); }
+        50% { opacity: 1; transform: scale(1.1); }
+      }
+
+      .mode-selector {
+        display: flex;
+        background: rgba(0, 0, 0, 0.05);
+        border-radius: 8px;
+        padding: 4px;
+        margin-bottom: 16px;
+      }
+
+      .mode-option {
+        flex: 1;
+        padding: 8px 16px;
+        text-align: center;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.2s ease;
+        background: transparent;
+        color: #6b7280;
+        border: none;
+      }
+
+      .mode-option.active {
+        background: #cc7a00;
+        color: white;
+      }
+    </style>
   </head>
   <body>
     <div class="app-container">
@@ -52,7 +193,7 @@
                 </svg>
               </div>
               <h2 class="welcome-title">How can I help you today?</h2>
-              <p class="welcome-subtitle">Start a conversation by clicking the record button below</p>
+              <p class="welcome-subtitle">Choose your recording mode and start a conversation</p>
             </div>
           </div>
 
@@ -65,8 +206,25 @@
         <!-- Input Area -->
         <div class="input-area">
           <div class="input-container">
+            <!-- Mode Selection -->
+            <div class="mode-selector">
+              <button class="mode-option active" data-mode="standard">Standard Mode</button>
+              <button class="mode-option" data-mode="streaming">Streaming Mode</button>
+            </div>
+
             <!-- Status Message -->
             <div id="status-message" class="status-message"></div>
+            
+            <!-- Visualizer (only shown in streaming mode) -->
+            <div id="visualizer-container" class="visualizer-container">
+              <div class="audio-visualizer" id="visualizer">
+                <div style="color: #888; font-size: 14px;">Audio Visualizer</div>
+              </div>
+              <div class="streaming-status">
+                <div id="stream-indicator" class="stream-indicator inactive"></div>
+                <span id="streaming-status-text">Streaming inactive</span>
+              </div>
+            </div>
             
             <!-- Control Buttons -->
             <div class="control-section">
@@ -109,6 +267,13 @@
               
               <!-- Record Text -->
               <span id="record-text" class="record-text">Click to speak</span>
+
+              <!-- Streaming Controls -->
+              <div id="streaming-controls" class="streaming-controls" style="display: none;">
+                <div class="streaming-info">
+                  Streaming Mode: Real-time audio data sent to server for immediate processing
+                </div>
+              </div>
             </div>
           </div>
         </div>
