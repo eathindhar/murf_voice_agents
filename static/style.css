@@ -162,6 +162,14 @@ body {
     font-size: 0.875rem;
 }
 
+.turn-metadata {
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid #444;
+    color: #888;
+    font-size: 0.75rem;
+}
+
 /* Audio Controls */
 .audio-controls {
     padding: 1.5rem;

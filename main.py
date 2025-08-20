@@ -12,6 +12,7 @@ import json
 import asyncio
 from services import stt_service, llm_service, tts_service
 from pydantic import BaseModel
+import time
 
 # AssemblyAI streaming imports
 import assemblyai as aai
@@ -49,8 +50,6 @@ else:
 if not MURF_API_KEY:
     logging.warning("MURF_API_KEY not found")
 
-
-
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -77,16 +76,11 @@ async def home(request: Request):
     """Serves the main HTML page."""
     return templates.TemplateResponse("index.html", {"request": request})
 
-
 @app.post("/agent/chat/{session_id}")
 async def agent_chat(
     session_id: str = Path(..., description="The unique ID for the chat session."),
     audio_file: UploadFile = File(...)
 ):
-    """
-    Handles a turn in the conversation, including history.
-    STT -> Add to History -> LLM -> Add to History -> TTS
-    """
     fallback_audio_path = "static/fallback.mp3"
 
     # Check for keys by importing them from the config module
@@ -119,7 +113,6 @@ async def agent_chat(
         logging.error(f"An error occurred in session {session_id}: {e}")
         return FileResponse(fallback_audio_path, media_type="audio/mpeg", headers={"X-Error": "true"})
 
-
 @app.post("/tts")
 async def tts_endpoint(request: TTSRequest):
     """Endpoint for the simple Text-to-Speech utility."""
@@ -132,7 +125,6 @@ async def tts_endpoint(request: TTSRequest):
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": f"TTS generation failed: {e}"})
 
-
 @app.get("/voices")
 async def get_voices():
     """Fetches the list of available voices from Murf AI."""
@@ -141,7 +133,6 @@ async def get_voices():
         return JSONResponse(content={"voices": voices})
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": f"Failed to fetch voices: {e}"})
-
 
 @app.websocket("/ws")
 async def websocket_audio_streaming(websocket: WebSocket):
@@ -163,6 +154,13 @@ async def websocket_audio_streaming(websocket: WebSocket):
     # Create a queue for transcription messages
     transcription_queue = asyncio.Queue()
 
+    # Session history for WebSocket connection
+    session_history = []
+    
+    # Track processed turns to prevent duplicates (normalize case and whitespace)
+    processed_turns = set()
+    last_turn_time = 0
+
     # Initialize AssemblyAI StreamingClient
     client = StreamingClient(
         StreamingClientOptions(
@@ -176,23 +174,48 @@ async def websocket_audio_streaming(websocket: WebSocket):
         logging.info(f"Transcription session started: {event.id}")
 
     def on_turn(self: Type[StreamingClient], event: TurnEvent):
+        nonlocal session_history, processed_turns, last_turn_time
+        current_time = time.time()
         transcript_text = event.transcript
         logging.info(f"Real-time transcript: {transcript_text}")
-        print(f"TRANSCRIPTION: {transcript_text}")  # Print to console as requested
-        
-        # Put transcription in queue for async sending
-        try:
-            transcription_queue.put_nowait({
-                "type": "transcription",
-                "text": transcript_text,
-                "is_final": event.end_of_turn
-            })
-        except asyncio.QueueFull:
-            logging.warning("Transcription queue is full")
-        
-        if event.end_of_turn and not event.turn_is_formatted:
-            params = StreamingParameters(sample_rate=16000, format_turns=True)
-            self.set_params(params)
+        print(f"TRANSCRIPTION: {transcript_text}")
+
+        normalized_transcript = ''.join(transcript_text.strip().lower())
+
+        if (event.end_of_turn and 
+            transcript_text and 
+            len(transcript_text) > 3 and 
+            normalized_transcript not in processed_turns and 
+            current_time  - last_turn_time > 3):
+
+            processed_turns.add(normalized_transcript)
+            last_turn_time = current_time
+            print(f"New turn detected: {transcript_text}")
+
+            try:
+                transcription_queue.put_nowait({
+                    "type": "transcription",
+                    "text": transcript_text,
+                    "is_final": True,
+                    "end_of_turn": True
+                })
+
+                transcription_queue.put_nowait({
+                    "type": "turn_end",
+                    "message": "No New Message"
+                })
+
+                try:
+                    llm_response_text, updated_history = llm_service.get_llm_response(transcript_text, session_history)
+                    session_history = updated_history
+                    print("********* START OF RESPONSE *********", flush=True)
+                    print("Response: ",llm_response_text, flush=True)
+                    print("********* END OF RESPONSE *********", flush=True)
+                except Exception as e:
+                    print(f"\nError processing LLM response: {e}")
+            
+            except asyncio.QueueFull:
+                print("Transcription queue is full")
 
     def on_terminated(self: Type[StreamingClient], event: TerminationEvent):
         logging.info(f"Transcription session terminated: {event.audio_duration_seconds} seconds of audio processed")
@@ -278,7 +301,6 @@ async def websocket_audio_streaming(websocket: WebSocket):
             await websocket.close()
         except Exception as e:
             logging.error(f"Error closing WebSocket: {e}")
-
 
 if __name__ == "__main__":
     import uvicorn

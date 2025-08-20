@@ -14,7 +14,7 @@ else:
 
 def get_llm_response(user_query: str, history: List[Dict[str, Any]]) -> Tuple[str, List[Dict[str, Any]]]:
     """Gets a response from the Gemini LLM and updates chat history."""
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    model = genai.GenerativeModel('gemini-2.0-flash')
     chat = model.start_chat(history=history)
     response = chat.send_message(user_query)
     return response.text, chat.history

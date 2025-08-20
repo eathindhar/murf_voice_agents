@@ -31,7 +31,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     };
 
     // Add transcription as chat bubble
-    const addTranscriptionBubble = (text, isFinal = false) => {
+    const addTranscriptionBubble = (text, isFinal = false, turnData = null) => {
         if (!text.trim()) return;
 
         // Remove welcome message if it exists
@@ -57,6 +57,18 @@ document.addEventListener("DOMContentLoaded", async () => {
             hour: 'numeric', 
             minute: '2-digit' 
         });
+        
+        // Add turn metadata if available
+        if (turnData && isFinal) {
+            const metadata = document.createElement('div');
+            metadata.className = 'turn-metadata';
+            metadata.innerHTML = `
+                <small>Turn ID: ${turnData.turn_id || 'N/A'} | 
+                Confidence: ${turnData.confidence ? (turnData.confidence * 100).toFixed(1) + '%' : 'N/A'} | 
+                Duration: ${turnData.audio_duration ? turnData.audio_duration.toFixed(2) + 's' : 'N/A'}</small>
+            `;
+            bubble.appendChild(metadata);
+        }
         
         bubble.appendChild(bubbleText);
         bubble.appendChild(bubbleTimestamp);
@@ -140,8 +152,24 @@ document.addEventListener("DOMContentLoaded", async () => {
                     console.log("Parsed message data:", data);
                     
                     if (data.type === "transcription") {
-                        // Add transcription with timestamp
-                        addTranscriptionBubble(data.text, data.is_final);
+                        // Check if this is a turn event with turn object
+                        const turnData = data.turn || null;
+                        
+                        // Log turn information if available
+                        if (turnData && data.is_final) {
+                            console.log("Turn Object Data:", {
+                                turn_id: turnData.turn_id,
+                                confidence: turnData.confidence,
+                                audio_duration: turnData.audio_duration,
+                                start_time: turnData.start_time,
+                                end_time: turnData.end_time,
+                                speaker: turnData.speaker,
+                                channel: turnData.channel
+                            });
+                        }
+                        
+                        // Add transcription with turn data
+                        addTranscriptionBubble(data.text, data.is_final, turnData);
                         console.log(`Transcription ${data.is_final ? '(final)' : '(partial)'}: ${data.text}`);
                     } else if (data.type === "error") {
                         console.error("Transcription error:", data.message);
@@ -255,6 +283,4 @@ document.addEventListener("DOMContentLoaded", async () => {
             stopRecording();
         }
     });
-
-    console.log('Voice Agent UI initialized');
 });
