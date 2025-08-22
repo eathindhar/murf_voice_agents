@@ -13,6 +13,7 @@ import asyncio
 from services import stt_service, llm_service, tts_service
 from pydantic import BaseModel
 import time
+import threading
 
 # AssemblyAI streaming imports
 import assemblyai as aai
@@ -169,6 +170,32 @@ async def websocket_audio_streaming(websocket: WebSocket):
         )
     )
 
+    async def process_llm_with_murf_async(transcript_text: str):
+        nonlocal session_history
+        try:
+            llm_response_text, updated_history, audio_chunks = await llm_service.get_llm_response_with_murf(transcript_text, session_history)
+            session_history = updated_history
+            print(f"\nReceived {len(audio_chunks)} audio chunks from Murf")
+        except Exception as e:
+            print(f"\nError in LLM/Murf integration: {e}")
+
+
+    def process_llm_with_nurf_sync(transcript_text: str):
+        def run_in_thread():
+            new_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(new_loop)
+            try:
+                new_loop.run_until_complete(process_llm_with_murf_async(transcript_text))
+            except Exception as e:
+                logging.error(f"Error in LLM processing thread: {e}")
+            finally:
+                new_loop.close()
+        
+        thread = threading.Thread(target=run_in_thread)
+        thread.daemon = True  # Ensure thread exits when main program exits
+        thread.start()
+
+
     # Define event handlers
     def on_begin(self: Type[StreamingClient], event: BeginEvent):
         logging.info(f"Transcription session started: {event.id}")
@@ -186,7 +213,7 @@ async def websocket_audio_streaming(websocket: WebSocket):
             transcript_text and 
             len(transcript_text) > 3 and 
             normalized_transcript not in processed_turns and 
-            current_time  - last_turn_time > 3):
+            current_time  - last_turn_time > 2):
 
             processed_turns.add(normalized_transcript)
             last_turn_time = current_time
@@ -204,6 +231,10 @@ async def websocket_audio_streaming(websocket: WebSocket):
                     "type": "turn_end",
                     "message": "No New Message"
                 })
+                
+                print("********* START OF RESPONSE *********", end="", flush=True)
+                process_llm_with_nurf_sync(transcript_text)
+                print("********* END OF RESPONSE *********", flush=True)
 
                 try:
                     llm_response_text, updated_history = llm_service.get_llm_response(transcript_text, session_history)
@@ -258,6 +289,7 @@ async def websocket_audio_streaming(websocket: WebSocket):
             StreamingParameters(
                 sample_rate=16000,
                 format_turns=True,
+                enable_extra_session_information=True,
             )
         )
         
