@@ -171,6 +171,26 @@ document.addEventListener("DOMContentLoaded", async () => {
                         // Add transcription with turn data
                         addTranscriptionBubble(data.text, data.is_final, turnData);
                         console.log(`Transcription ${data.is_final ? '(final)' : '(partial)'}: ${data.text}`);
+                    } else if (data.type === "audio_complete") {
+                        // Handle audio streaming completion
+                        console.log(`AUDIO STREAMING COMPLETED`);
+                        console.log(`Total chunks in session: ${data.total_chunks}`);
+                        console.log(`Chunks in local array: ${audioChunks.length}`);
+                        
+                        if (currentAudioSession) {
+                            const duration = Date.now() - currentAudioSession.startTime;
+                            console.log(`Audio session summary:`);
+                            console.log(`Duration: ${duration}ms`);
+                            console.log(`Expected chunks: ${currentAudioSession.expectedChunks}`);
+                            console.log(`Received chunks: ${currentAudioSession.receivedChunks}`);
+                            console.log(`Success rate: ${(currentAudioSession.receivedChunks / currentAudioSession.expectedChunks * 100).toFixed(1)}%`);
+                        }
+                        
+                        statusDisplay.textContent = "AI response received. Continue speaking or stop recording.";
+                        
+                        // Reset for next audio session
+                        currentAudioSession = null;
+                        
                     } else if (data.type === "error") {
                         console.error("Transcription error:", data.message);
                         showError(`Transcription error: ${data.message}`);

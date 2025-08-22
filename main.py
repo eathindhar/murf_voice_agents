@@ -176,8 +176,44 @@ async def websocket_audio_streaming(websocket: WebSocket):
             llm_response_text, updated_history, audio_chunks = await llm_service.get_llm_response_with_murf(transcript_text, session_history)
             session_history = updated_history
             print(f"\nReceived {len(audio_chunks)} audio chunks from Murf")
+
+            if audio_chunks:
+                print(f"Streaming {len(audio_chunks)} audio chunks to client...")
+                for i, chunk in enumerate(audio_chunks):
+                    try:
+                        await websocket.send_text(json.dumps({
+                            "type": "audio_chunk",
+                            "chunk_index": i + 1,
+                            "total_chunks": len(audio_chunks),
+                            "audio_data": chunk,
+                            "is_final": i == len(audio_chunks) - 1
+                        }))
+                        print(f"Sent audio chunk {i + 1}/{len(audio_chunks)} to client")
+                    except Exception as chunk_error:
+                        print(f"Error sending audio chunk {i + 1}: {chunk_error}")
+                        break
+                
+                # Send completion message
+                try:
+                    await websocket.send_text(json.dumps({
+                        "type": "audio_complete",
+                        "message": "Audio streaming completed",
+                        "total_chunks": len(audio_chunks)
+                    }))
+                    print("Audio streaming completed")
+                except Exception as complete_error:
+                    print(f"Error sending completion message: {complete_error}")
+            else:
+                print("No audio chunks received from Murf")
         except Exception as e:
             print(f"\nError in LLM/Murf integration: {e}")
+            try:
+                await websocket.send_text(json.dumps({
+                    "type": "error",
+                    "message": f"Error generating response: {str(e)}"
+                }))
+            except:
+                pass
 
 
     def process_llm_with_nurf_sync(transcript_text: str):
