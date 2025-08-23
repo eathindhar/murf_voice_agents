@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AI Voice Agent</title>
+    <title>Kath.AI</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
     <link rel="stylesheet" href="/static/style.css">
 </head>
@@ -13,7 +13,7 @@
         <div class="header">
             <div class="header-left">
                 <div class="brand-icon">+</div>
-                <h4 class="brand-name">Voice.AI</h4>
+                <h4 class="brand-name">Kath.AI</h4>
             </div>
             <div class="header-right">
                 <button class="new-chat-btn">+ New Chat</button>
@@ -27,7 +27,7 @@
         <!-- Chat Area -->
         <div class="chat-area" id="chatArea">
             <div class="welcome-message">
-                <h3>AI Voice Agent</h3>
+                <h3>Kath.AI Voice Agent</h3>
                 <p>Press the microphone button below to start your conversation</p>
             </div>
         </div>
@@ -35,6 +35,11 @@
         <!-- Audio Controls -->
         <div class="audio-controls">
             <div id="statusDisplay" class="status-text">Ready to chat!</div>
+            
+            <!-- Pipeline Status Indicator -->
+            <div id="pipelineStatus" class="pipeline-status d-none">
+                <div class="pipeline-text">🎤 Live transcription...</div>
+            </div>
             
             <div class="controls-row">
                 <button id="recordBtn" class="record-btn">

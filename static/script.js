@@ -17,73 +17,122 @@ document.addEventListener("DOMContentLoaded", async () => {
     let socket = null;
 
     // --- Audio Playback Logic ---
-    let playbackContext = null;
-    let nextStartTime = 0;
+    let audioQueue = [];
     let isPlayingAudio = false;
+    let currentAudio = null;
 
     const recordBtn = document.getElementById("recordBtn");
     const cancelBtn = document.getElementById("cancelBtn");
     const statusDisplay = document.getElementById("statusDisplay");
     const processingStatus = document.getElementById("processingStatus");
     const chatArea = document.getElementById("chatArea");
+    const pipelineStatus = document.getElementById("pipelineStatus");
 
-    // Initialize audio playback context
-    const initPlaybackContext = () => {
-        if (!playbackContext) {
-            playbackContext = new (window.AudioContext || window.webkitAudioContext)();
-            nextStartTime = 0;
+    // Pipeline status management
+    const updatePipelineStatus = (stage, message) => {
+        const pipelineText = pipelineStatus.querySelector('.pipeline-text');
+        
+        // Remove all status classes
+        pipelineStatus.className = 'pipeline-status';
+        
+        switch(stage) {
+            case 'transcribing':
+                pipelineStatus.classList.add('transcribing');
+                pipelineText.textContent = '🎤 ' + (message || 'Live transcription...');
+                break;
+            case 'processing':
+                pipelineStatus.classList.add('processing');
+                pipelineText.textContent = '🧠 ' + (message || 'Sent to Gemini AI...');
+                break;
+            case 'responding':
+                pipelineStatus.classList.add('responding');
+                pipelineText.textContent = '💭 ' + (message || 'Received Gemini response...');
+                break;
+            case 'converting':
+                pipelineStatus.classList.add('converting');
+                pipelineText.textContent = '🔄 ' + (message || 'Converting response to audio...');
+                break;
+            case 'playing':
+                pipelineStatus.classList.add('playing');
+                pipelineText.textContent = '🔊 ' + (message || 'Audio received and playing...');
+                break;
+            case 'hide':
+            default:
+                pipelineStatus.classList.add('d-none');
+                return;
         }
+        
+        pipelineStatus.classList.remove('d-none');
     };
 
-    // Play audio chunk seamlessly
+    // Play audio chunk using HTML Audio API with sequential playback
     const playAudioChunk = async (base64AudioData) => {
         try {
-            initPlaybackContext();
+            console.log(`Received audio chunk of size: ${base64AudioData.length} chars`);
             
-            // Resume context if suspended (required by some browsers)
-            if (playbackContext.state === 'suspended') {
-                await playbackContext.resume();
+            // Validate base64 data
+            if (!base64AudioData || base64AudioData.length === 0) {
+                console.error('Empty audio data received');
+                return;
             }
-
-            // Decode base64 to array buffer
+            
+            // Convert base64 to blob
             const binaryString = atob(base64AudioData);
             const bytes = new Uint8Array(binaryString.length);
             for (let i = 0; i < binaryString.length; i++) {
                 bytes[i] = binaryString.charCodeAt(i);
             }
 
-            // Decode audio data
-            const audioBuffer = await playbackContext.decodeAudioData(bytes.buffer);
-            
-            // Create buffer source
-            const source = playbackContext.createBufferSource();
-            source.buffer = audioBuffer;
-            source.connect(playbackContext.destination);
+            console.log(`Binary data size: ${bytes.length} bytes`);
 
-            // Calculate when to start this chunk
-            const currentTime = playbackContext.currentTime;
-            const startTime = Math.max(currentTime, nextStartTime);
+            // Create audio blob (try MP3 first since we changed the backend format)
+            const audioBlob = new Blob([bytes], { type: 'audio/mpeg' });
+            const audioUrl = URL.createObjectURL(audioBlob);
             
-            // Start playback
-            source.start(startTime);
+            // Add to queue for sequential playback
+            audioQueue.push({
+                url: audioUrl,
+                blob: audioBlob,
+                data: bytes
+            });
             
-            // Update next start time for seamless playback
-            nextStartTime = startTime + audioBuffer.duration;
+            console.log(`Added audio chunk to queue. Queue length: ${audioQueue.length}`);
             
-            console.log(`Playing audio chunk at ${startTime.toFixed(3)}s, duration: ${audioBuffer.duration.toFixed(3)}s`);
+            // Start playing if not already playing
+            if (!isPlayingAudio) {
+                console.log('Starting sequential audio playback');
+                playNextAudioChunk();
+            }
             
         } catch (error) {
-            console.error('Error playing audio chunk:', error);
+            console.error('Error processing audio chunk:', error);
         }
+    };
+
+    // Simplified audio queue - remove for now since we're testing direct playback
+    // Play next audio chunk in queue
+    const playNextAudioChunk = () => {
+        // Removed queue system for direct testing
+        console.log('Queue system disabled for debugging');
     };
 
     // Reset audio playback state
     const resetAudioPlayback = () => {
-        nextStartTime = 0;
+        console.log('Resetting audio playback state');
         isPlayingAudio = false;
-        if (playbackContext) {
-            // Don't close the context, just reset the timing
-            nextStartTime = playbackContext.currentTime;
+        
+        // Clear the queue
+        audioQueue.forEach(item => {
+            if (item.url) {
+                URL.revokeObjectURL(item.url);
+            }
+        });
+        audioQueue = [];
+        
+        // Stop current audio if playing
+        if (currentAudio) {
+            currentAudio.pause();
+            currentAudio = null;
         }
     };
 
@@ -167,6 +216,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             socket.onopen = async () => {
                 console.log("WebSocket connection established for streaming transcription.");
                 statusDisplay.textContent = "🎤 Listening... Speak now!";
+                updatePipelineStatus('transcribing', 'Live transcription active...');
 
                 try {
                     // Get microphone access
@@ -240,18 +290,46 @@ document.addEventListener("DOMContentLoaded", async () => {
                         addTranscriptionBubble(data.text, data.is_final, turnData);
                         console.log(`Transcription ${data.is_final ? '(final)' : '(partial)'}: ${data.text}`);
                         
+                        // Update pipeline status when we get a final transcription
+                        if (data.is_final && data.end_of_turn) {
+                            updatePipelineStatus('processing', 'Sent to Gemini AI...');
+                            
+                            // Set a timeout to show "waiting for response" if no audio comes quickly
+                            setTimeout(() => {
+                                if (!isPlayingAudio) {
+                                    updatePipelineStatus('responding', 'Waiting for Gemini response...');
+                                }
+                            }, 1000);
+                            
+                            // Set another timeout to show "converting" if still waiting
+                            setTimeout(() => {
+                                if (!isPlayingAudio) {
+                                    updatePipelineStatus('converting', 'Converting response to audio...');
+                                }
+                            }, 3000);
+                        }
+                        
+                    } else if (data.type === "turn_end") {
+                        // This indicates the turn has ended, response should be coming
+                        console.log("Turn ended, response should be generating...");
+                        
                     } else if (data.type === "audio_chunk") {
                         // Handle audio chunk playback
                         console.log(`Received audio chunk ${data.chunk_index}/${data.total_chunks}`);
                         
                         if (data.audio_data) {
-                            // Play the audio chunk immediately
-                            playAudioChunk(data.audio_data);
-                            
-                            if (!isPlayingAudio) {
+                            // Update status on first chunk - this means Murf has started generating
+                            if (data.chunk_index === 1) {
+                                console.log("First audio chunk received - Murf generation started");
+                                updatePipelineStatus('playing', `Audio received and playing... (1/${data.total_chunks})`);
                                 isPlayingAudio = true;
                                 statusDisplay.textContent = "🔊 Playing AI response...";
+                            } else {
+                                updatePipelineStatus('playing', `Audio received and playing... (${data.chunk_index}/${data.total_chunks})`);
                             }
+                            
+                            // Play the audio chunk immediately
+                            playAudioChunk(data.audio_data);
                         }
                         
                     } else if (data.type === "audio_complete") {
@@ -262,13 +340,15 @@ document.addEventListener("DOMContentLoaded", async () => {
                         statusDisplay.textContent = "AI response received. Continue speaking or stop recording.";
                         isPlayingAudio = false;
                         
-                    } else if (data.type === "turn_end") {
-                        // Handle turn end - prepare for next interaction
-                        console.log("Turn ended, ready for next input");
+                        // Hide pipeline status after a short delay
+                        setTimeout(() => {
+                            updatePipelineStatus('hide');
+                        }, 2000);
                         
                     } else if (data.type === "error") {
                         console.error("Transcription error:", data.message);
                         showError(`Transcription error: ${data.message}`);
+                        updatePipelineStatus('hide');
                     } else if (data.type === "status") {
                         console.log("Status message:", data.message);
                         statusDisplay.textContent = data.message;
@@ -283,11 +363,13 @@ document.addEventListener("DOMContentLoaded", async () => {
                 if (isRecording) {
                     statusDisplay.textContent = "Session ended";
                 }
+                updatePipelineStatus('hide');
             };
 
             socket.onerror = (error) => {
                 console.error("WebSocket error:", error);
                 showError("Connection error occurred");
+                updatePipelineStatus('hide');
             };
 
         } catch (err) {
@@ -306,6 +388,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         statusDisplay.textContent = "Processing...";
         statusDisplay.classList.remove("error");
         processingStatus.classList.remove("d-none");
+
+        // Hide pipeline status
+        updatePipelineStatus('hide');
 
         // Clean up audio processing
         if (processor) {
@@ -347,6 +432,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         statusDisplay.textContent = message;
         statusDisplay.classList.add("error");
         processingStatus.classList.add("d-none");
+        updatePipelineStatus('hide');
         
         // Clear error styling after a few seconds
         setTimeout(() => {
@@ -356,6 +442,24 @@ document.addEventListener("DOMContentLoaded", async () => {
             }
         }, 5000);
     };
+
+    // Test audio playback with a simple beep
+    const testAudioPlayback = () => {
+        // Create a simple test audio
+        const testAudio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmMdBTOG0fPTgjMGHm7A7+OZURE');
+        testAudio.volume = 0.3;
+        testAudio.play().then(() => {
+            console.log('Test audio played successfully');
+        }).catch(e => {
+            console.error('Test audio failed:', e);
+        });
+    };
+
+    // Add test button click handler (temporary)
+    recordBtn.addEventListener('dblclick', () => {
+        console.log('Testing audio playback...');
+        testAudioPlayback();
+    });
 
     // Event listeners
     recordBtn.addEventListener("click", () => {
@@ -377,8 +481,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (isRecording) {
             stopRecording();
         }
-        if (playbackContext) {
-            playbackContext.close();
-        }
+        // Clean up audio resources
+        resetAudioPlayback();
     });
 });

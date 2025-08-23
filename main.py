@@ -161,6 +161,9 @@ async def websocket_audio_streaming(websocket: WebSocket):
     # Track processed turns to prevent duplicates (normalize case and whitespace)
     processed_turns = set()
     last_turn_time = 0
+    
+    # Store the main event loop
+    main_loop = asyncio.get_running_loop()
 
     # Initialize AssemblyAI StreamingClient
     client = StreamingClient(
@@ -215,22 +218,17 @@ async def websocket_audio_streaming(websocket: WebSocket):
             except:
                 pass
 
-
-    def process_llm_with_nurf_sync(transcript_text: str):
-        def run_in_thread():
-            new_loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(new_loop)
-            try:
-                new_loop.run_until_complete(process_llm_with_murf_async(transcript_text))
-            except Exception as e:
-                logging.error(f"Error in LLM processing thread: {e}")
-            finally:
-                new_loop.close()
-        
-        thread = threading.Thread(target=run_in_thread)
-        thread.daemon = True  # Ensure thread exits when main program exits
-        thread.start()
-
+    def schedule_async_task(transcript_text: str):
+        """Schedule the async task on the main event loop from a thread"""
+        try:
+            # Schedule the coroutine on the main event loop
+            future = asyncio.run_coroutine_threadsafe(
+                process_llm_with_murf_async(transcript_text), 
+                main_loop
+            )
+            print(f"Scheduled async LLM task for: {transcript_text[:50]}...")
+        except Exception as e:
+            print(f"Error scheduling async task: {e}")
 
     # Define event handlers
     def on_begin(self: Type[StreamingClient], event: BeginEvent):
@@ -249,7 +247,7 @@ async def websocket_audio_streaming(websocket: WebSocket):
             transcript_text and 
             len(transcript_text) > 3 and 
             normalized_transcript not in processed_turns and 
-            current_time  - last_turn_time > 2):
+            current_time - last_turn_time > 2):
 
             processed_turns.add(normalized_transcript)
             last_turn_time = current_time
@@ -269,17 +267,11 @@ async def websocket_audio_streaming(websocket: WebSocket):
                 })
                 
                 print("********* START OF RESPONSE *********", end="", flush=True)
-                process_llm_with_nurf_sync(transcript_text)
+                
+                # Schedule the async task on the main event loop
+                schedule_async_task(transcript_text)
+                
                 print("********* END OF RESPONSE *********", flush=True)
-
-                try:
-                    llm_response_text, updated_history = llm_service.get_llm_response(transcript_text, session_history)
-                    session_history = updated_history
-                    print("********* START OF RESPONSE *********", flush=True)
-                    print("Response: ",llm_response_text, flush=True)
-                    print("********* END OF RESPONSE *********", flush=True)
-                except Exception as e:
-                    print(f"\nError processing LLM response: {e}")
             
             except asyncio.QueueFull:
                 print("Transcription queue is full")
