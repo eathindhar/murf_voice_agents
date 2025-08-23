@@ -16,11 +16,76 @@ document.addEventListener("DOMContentLoaded", async () => {
     let isRecording = false;
     let socket = null;
 
+    // --- Audio Playback Logic ---
+    let playbackContext = null;
+    let nextStartTime = 0;
+    let isPlayingAudio = false;
+
     const recordBtn = document.getElementById("recordBtn");
     const cancelBtn = document.getElementById("cancelBtn");
     const statusDisplay = document.getElementById("statusDisplay");
     const processingStatus = document.getElementById("processingStatus");
     const chatArea = document.getElementById("chatArea");
+
+    // Initialize audio playback context
+    const initPlaybackContext = () => {
+        if (!playbackContext) {
+            playbackContext = new (window.AudioContext || window.webkitAudioContext)();
+            nextStartTime = 0;
+        }
+    };
+
+    // Play audio chunk seamlessly
+    const playAudioChunk = async (base64AudioData) => {
+        try {
+            initPlaybackContext();
+            
+            // Resume context if suspended (required by some browsers)
+            if (playbackContext.state === 'suspended') {
+                await playbackContext.resume();
+            }
+
+            // Decode base64 to array buffer
+            const binaryString = atob(base64AudioData);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+
+            // Decode audio data
+            const audioBuffer = await playbackContext.decodeAudioData(bytes.buffer);
+            
+            // Create buffer source
+            const source = playbackContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(playbackContext.destination);
+
+            // Calculate when to start this chunk
+            const currentTime = playbackContext.currentTime;
+            const startTime = Math.max(currentTime, nextStartTime);
+            
+            // Start playback
+            source.start(startTime);
+            
+            // Update next start time for seamless playback
+            nextStartTime = startTime + audioBuffer.duration;
+            
+            console.log(`Playing audio chunk at ${startTime.toFixed(3)}s, duration: ${audioBuffer.duration.toFixed(3)}s`);
+            
+        } catch (error) {
+            console.error('Error playing audio chunk:', error);
+        }
+    };
+
+    // Reset audio playback state
+    const resetAudioPlayback = () => {
+        nextStartTime = 0;
+        isPlayingAudio = false;
+        if (playbackContext) {
+            // Don't close the context, just reset the timing
+            nextStartTime = playbackContext.currentTime;
+        }
+    };
 
     // Helper function to format timestamp (MM:SS format)
     const formatTimestamp = () => {
@@ -91,6 +156,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         statusDisplay.textContent = "Connecting to transcription service...";
         statusDisplay.classList.remove("error");
 
+        // Reset audio playback for new session
+        resetAudioPlayback();
+
         try {
             // Establish WebSocket connection
             const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -144,7 +212,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                 }
             };
 
-            // Handle messages from the WebSocket (transcription updates)
+            // Handle messages from the WebSocket (transcription updates and audio chunks)
             socket.onmessage = (event) => {
                 console.log("Received WebSocket message:", event.data);
                 try {
@@ -171,25 +239,32 @@ document.addEventListener("DOMContentLoaded", async () => {
                         // Add transcription with turn data
                         addTranscriptionBubble(data.text, data.is_final, turnData);
                         console.log(`Transcription ${data.is_final ? '(final)' : '(partial)'}: ${data.text}`);
+                        
+                    } else if (data.type === "audio_chunk") {
+                        // Handle audio chunk playback
+                        console.log(`Received audio chunk ${data.chunk_index}/${data.total_chunks}`);
+                        
+                        if (data.audio_data) {
+                            // Play the audio chunk immediately
+                            playAudioChunk(data.audio_data);
+                            
+                            if (!isPlayingAudio) {
+                                isPlayingAudio = true;
+                                statusDisplay.textContent = "🔊 Playing AI response...";
+                            }
+                        }
+                        
                     } else if (data.type === "audio_complete") {
                         // Handle audio streaming completion
                         console.log(`AUDIO STREAMING COMPLETED`);
-                        console.log(`Total chunks in session: ${data.total_chunks}`);
-                        console.log(`Chunks in local array: ${audioChunks.length}`);
-                        
-                        if (currentAudioSession) {
-                            const duration = Date.now() - currentAudioSession.startTime;
-                            console.log(`Audio session summary:`);
-                            console.log(`Duration: ${duration}ms`);
-                            console.log(`Expected chunks: ${currentAudioSession.expectedChunks}`);
-                            console.log(`Received chunks: ${currentAudioSession.receivedChunks}`);
-                            console.log(`Success rate: ${(currentAudioSession.receivedChunks / currentAudioSession.expectedChunks * 100).toFixed(1)}%`);
-                        }
+                        console.log(`Total chunks received: ${data.total_chunks}`);
                         
                         statusDisplay.textContent = "AI response received. Continue speaking or stop recording.";
+                        isPlayingAudio = false;
                         
-                        // Reset for next audio session
-                        currentAudioSession = null;
+                    } else if (data.type === "turn_end") {
+                        // Handle turn end - prepare for next interaction
+                        console.log("Turn ended, ready for next input");
                         
                     } else if (data.type === "error") {
                         console.error("Transcription error:", data.message);
@@ -301,6 +376,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     window.addEventListener('beforeunload', () => {
         if (isRecording) {
             stopRecording();
+        }
+        if (playbackContext) {
+            playbackContext.close();
         }
     });
 });
